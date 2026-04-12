@@ -1,0 +1,340 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --text: #e7ecf3;
+  --muted: #8b9cb3;
+  --accent: #5b8cff;
+  --border: #2a3544;
+  --danger: #e85d5d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+main {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+main:has(.journey-page) {
+  max-width: 76rem;
+}
+
+.journey-page {
+  max-width: 72rem;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.journey-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .journey-layout {
+    grid-template-columns: 1fr;
+  }
+  .journey-history-aside {
+    order: -1;
+  }
+}
+
+.journey-history-aside {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+}
+
+.history-details summary.history-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  list-style: none;
+}
+
+.history-details summary.history-summary::-webkit-details-marker {
+  display: none;
+}
+
+.history-details summary.history-summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.history-details[open] summary.history-summary::before {
+  transform: rotate(90deg);
+}
+
+.history-body {
+  margin-top: 0.75rem;
+  max-height: min(70vh, 32rem);
+  overflow: auto;
+  font-size: 0.85rem;
+}
+
+.btn-secondary {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.btn-danger-outline {
+  background: transparent !important;
+  color: var(--danger) !important;
+  border: 1px solid var(--border) !important;
+  padding: 0.35rem 0.6rem !important;
+  font-size: 0.85rem !important;
+}
+
+.btn-add-line {
+  align-self: flex-start;
+  background: transparent !important;
+  color: var(--accent) !important;
+  border: 1px dashed var(--border) !important;
+  font-size: 0.875rem !important;
+}
+
+.spark-variation-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.spark-variation-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.spark-variation-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.spark-variation-actions {
+  gap: 0.5rem;
+}
+
+.variation-line {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: start;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .variation-line {
+    grid-template-columns: 1fr;
+  }
+}
+
+.variation-source {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding-top: 0.4rem;
+}
+
+.variation-line-input {
+  min-height: 2.75rem;
+}
+
+.perspective-toolbar {
+  margin-bottom: 0.5rem;
+}
+
+.perspective-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.perspective-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.perspective-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.perspective-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(91, 140, 255, 0.2);
+  color: var(--accent);
+}
+
+.perspective-badge.subtle {
+  background: rgba(139, 156, 179, 0.15);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.perspective-body-input {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.perspective-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.perspective-chips .chip {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--muted);
+}
+
+.perspective-card-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+}
+
+.perspective-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.perspective-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.perspective-card-actions button {
+  font-size: 0.875rem;
+  padding: 0.4rem 0.75rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button:disabled[title] {
+  cursor: help;
+}
+
+input,
+textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.error {
+  color: var(--danger);
+  margin: 0.5rem 0;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
