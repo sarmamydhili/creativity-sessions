@@ -1,3 +1,4 @@
+from app.models.creative_levers import CreativeLevers, LeveredPerspectivesOutput
 from app.models.session import (
     CreativityTool,
     EnlightenmentArtifact,
@@ -35,6 +36,8 @@ from app.models.session import (
 )
 
 __all__ = [
+    "CreativeLevers",
+    "LeveredPerspectivesOutput",
     "CreativityTool",
     "EnlightenmentArtifact",
     "EnlightenmentGenerateResponse",

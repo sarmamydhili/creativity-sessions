@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 
+from app.models.creative_levers import CreativeLevers
+
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -162,6 +164,10 @@ class SessionDetail(SessionSummary):
     spark_state: SparkState | None = None
     variations: dict[str, list[VariationItem]] = Field(default_factory=dict)
     tool_applications: list[dict[str, Any]] = Field(default_factory=list)
+    """Last CREATIVE LEVER CONTROL selections persisted with the session (optional)."""
+    last_creative_levers: CreativeLevers | None = None
+    last_recommended_perspective: str | None = None
+    last_insight_candidates: list[str] = Field(default_factory=list)
     perspectives: list[Perspective] = Field(default_factory=list)
     insights: list[InsightRecord] = Field(default_factory=list)
     invention: InventionArtifact | None = None
@@ -240,11 +246,18 @@ class VariationsPersistRequest(BaseModel):
 # Perspectives
 class PerspectivesGenerateRequest(BaseModel):
     max_perspectives: int = Field(default=16, ge=4, le=32)
+    creative_levers: CreativeLevers | None = Field(
+        None,
+        description="If set, use CREATIVE LEVER CONTROL prompt path instead of legacy matrix.",
+    )
 
 
 class PerspectivesGenerateResponse(BaseModel):
     session: SessionDetail
     perspectives: list[Perspective]
+    recommended_perspective: str | None = None
+    insight_candidates: list[str] = Field(default_factory=list)
+    creative_levers_applied: CreativeLevers | None = None
 
 
 class PerspectiveSelectionRequest(BaseModel):

@@ -83,7 +83,7 @@ async def perspectives_generate(
     body: PerspectivesGenerateRequest | None = Body(default=None),
 ) -> PerspectivesGenerateResponse:
     req = body or PerspectivesGenerateRequest()
-    return await wf.generate_perspectives(session_id, req.max_perspectives)
+    return await wf.generate_perspectives(session_id, req)
 
 
 @router.patch(

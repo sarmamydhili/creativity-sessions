@@ -1,15 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createSession } from "@/lib/api";
 
-export function SessionForm() {
+export function SessionForm({ templateTitle }: { templateTitle?: string }) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(templateTitle ?? "");
   const [problem, setProblem] = useState(
     "How can I help joggers stay hydrated more effectively while running?",
   );
+
+  useEffect(() => {
+    if (templateTitle) setTitle(templateTitle);
+  }, [templateTitle]);
   const [ownerId, setOwnerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

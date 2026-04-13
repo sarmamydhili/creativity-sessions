@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from app.models.creative_levers import CreativeLevers
 from app.models.session import (
     EnlightenmentArtifact,
     InventionArtifact,
@@ -43,6 +44,18 @@ class CreativeProvider(ABC):
         max_perspectives: int,
     ) -> list[Perspective]:
         """Meaningful combinations of parts × actions × creativity tools (GenAI)."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def perspectives_with_creative_levers(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        levers: CreativeLevers,
+        num_outputs: int,
+    ) -> tuple[list[Perspective], str, list[str]]:
+        """CREATIVE LEVER CONTROL: perspectives, recommended line, insight candidates."""
         raise NotImplementedError
 
     @abstractmethod

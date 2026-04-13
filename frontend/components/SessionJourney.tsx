@@ -1,7 +1,15 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
-import type { Perspective, SessionDetail, VariationItem, WorkflowStep } from "@/lib/types";
+import type {
+  CreativeLevers,
+  Perspective,
+  SessionDetail,
+  VariationItem,
+  WorkflowStep,
+} from "@/lib/types";
+import { DEFAULT_CREATIVE_LEVERS } from "@/lib/types";
 import {
   addPerspective,
   deletePerspective,
@@ -18,6 +26,19 @@ import {
   updatePerspective,
 } from "@/lib/api";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
+import { CreativeLeverPanel } from "@/components/CreativeLeverPanel";
+import { EnlightenmentView } from "@/components/EnlightenmentView";
+import { InventionBuilder } from "@/components/InventionBuilder";
+import { InsightsTray } from "@/components/InsightsTray";
+import { PerspectiveCards } from "@/components/PerspectiveCards";
+import { SPARKRail } from "@/components/SPARKRail";
+import { SPARKWorkspace } from "@/components/SPARKWorkspace";
+import type { SparkRailKey } from "@/lib/spark-ui";
+import {
+  suggestedNextMove,
+  sparkRailStatus,
+  workflowProgressPercent,
+} from "@/lib/spark-ui";
 
 const SPARK_FIELDS = [
   "situation",
@@ -29,18 +50,10 @@ const SPARK_FIELDS = [
 
 const SPARK_LABELS: Record<(typeof SPARK_FIELDS)[number], string> = {
   situation: "Situation",
-  parts: "Parts",
+  parts: "Pieces",
   actions: "Actions",
   role: "Role",
   key_goal: "Key goal",
-};
-
-const TOOL_LABELS: Record<string, string> = {
-  analogy: "Analogy",
-  recategorization: "Reframe",
-  combination: "Combine",
-  association: "Association",
-  user: "Your idea",
 };
 
 function newId(): string {
@@ -109,39 +122,110 @@ function normalizeStoredParts(s: string): string {
   return t;
 }
 
-function SparkPartsListEditor({
+/** Lines to display for Pieces (same rules as step 1 editor). */
+function splitNormalizedPiecesLines(raw: string): string[] {
+  const n = normalizeStoredParts(raw);
+  if (!n.trim()) return [];
+  return n.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+}
+
+/** Baseline text split for display (Pieces uses normalized lines; others use newlines or ;). */
+function splitBaselineForDisplay(
+  raw: string,
+  field: (typeof SPARK_FIELDS)[number],
+): string[] {
+  if (field === "parts") {
+    return splitNormalizedPiecesLines(raw);
+  }
+  const t = (raw ?? "").trim();
+  if (!t) return [];
+  if (t.includes("\n")) {
+    return t.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  }
+  const bySemi = t.split(";").map((s) => s.trim()).filter(Boolean);
+  if (bySemi.length > 1) {
+    return bySemi;
+  }
+  return [t];
+}
+
+/** Lines for editable baseline controls (at least one row). */
+function getEditableLines(
+  raw: string,
+  field: (typeof SPARK_FIELDS)[number],
+): string[] {
+  if (field === "parts") {
+    const n = normalizeStoredParts(raw);
+    return n.trim() === "" ? [""] : n.split(/\r?\n/);
+  }
+  const lines = splitBaselineForDisplay(raw, field);
+  return lines.length ? lines : [""];
+}
+
+function joinEditableLines(lines: string[]): string {
+  const t = lines.map((l) => l.trimEnd());
+  while (t.length > 1 && t[t.length - 1] === "") {
+    t.pop();
+  }
+  return t.join("\n");
+}
+
+const BASELINE_LINE_HINTS: Record<(typeof SPARK_FIELDS)[number], string> = {
+  situation:
+    "One line per beat (context, pressures, backdrop). Add, edit, or remove lines.",
+  parts:
+    "One piece (noun / entity) per line. Same as section 1; edits stay in sync.",
+  actions: "One line per action or verb phrase. Add, edit, or remove lines.",
+  role: "One line per role, hat, or stakeholder.",
+  key_goal: "One line per goal or success criterion.",
+};
+
+const BASELINE_BOX: CSSProperties = {
+  marginBottom: "0.75rem",
+  padding: "0.6rem 0.75rem",
+  borderRadius: "6px",
+  border: "1px solid var(--border, rgba(255,255,255,0.12))",
+  background: "rgba(127, 127, 127, 0.06)",
+};
+
+function SparkLinesListEditor({
+  field,
   value,
   onChange,
+  disabled,
 }: {
+  field: Exclude<(typeof SPARK_FIELDS)[number], "parts">;
   value: string;
   onChange: (next: string) => void;
+  disabled?: boolean;
 }) {
-  const lines = value.trim() === "" ? [""] : value.split(/\r?\n/);
+  const lines = getEditableLines(value, field);
   return (
-    <div className="stack spark-parts-block">
+    <div className="stack spark-baseline-lines">
       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
-        One noun or entity per line (people, places, objects, systems). Edit,
-        add, or remove lines.
+        {BASELINE_LINE_HINTS[field]}
       </p>
       {lines.map((line, i) => (
-        <div key={i} className="variation-line spark-part-line">
+        <div key={`${field}-${i}`} className="variation-line spark-baseline-line">
           <input
             type="text"
             className="variation-line-input"
+            disabled={disabled}
             value={line}
-            aria-label={`Part ${i + 1}`}
+            aria-label={`${SPARK_LABELS[field]} line ${i + 1}`}
             onChange={(e) => {
               const next = [...lines];
               next[i] = e.target.value;
-              onChange(next.join("\n"));
+              onChange(joinEditableLines(next));
             }}
           />
           <button
             type="button"
             className="btn-danger-outline"
+            disabled={disabled}
             onClick={() => {
               const next = lines.filter((_, j) => j !== i);
-              onChange(next.length ? next.join("\n") : "");
+              onChange(next.length ? joinEditableLines(next) : "");
             }}
           >
             Remove
@@ -151,7 +235,110 @@ function SparkPartsListEditor({
       <button
         type="button"
         className="btn-add-line"
-        onClick={() => onChange([...lines, ""].join("\n"))}
+        disabled={disabled}
+        onClick={() => onChange(joinEditableLines([...lines, ""]))}
+      >
+        + Add line
+      </button>
+    </div>
+  );
+}
+
+function SparkFieldBaselineEditor({
+  field,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: (typeof SPARK_FIELDS)[number];
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="spark-baseline-ref" style={BASELINE_BOX}>
+      <div
+        className="muted"
+        style={{
+          fontSize: "0.8rem",
+          fontWeight: 600,
+          marginBottom: "0.25rem",
+        }}
+      >
+        {SPARK_LABELS[field]} baseline (step 1)
+      </div>
+      <p className="muted" style={{ margin: "0 0 0.5rem", fontSize: "0.8rem" }}>
+        Edit the saved SPARK text here or in section 1—same data. Add, change, or
+        remove lines, then save.
+      </p>
+      {field === "parts" ? (
+        <SparkPartsListEditor
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+        />
+      ) : (
+        <SparkLinesListEditor
+          field={field}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+        />
+      )}
+    </div>
+  );
+}
+
+function SparkPartsListEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  disabled?: boolean;
+}) {
+  const normalized = normalizeStoredParts(value);
+  const lines =
+    normalized.trim() === "" ? [""] : normalized.split(/\r?\n/);
+  return (
+    <div className="stack spark-parts-block">
+      <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+        One piece (noun / entity) per line—people, places, objects, systems.
+        Replace, remove, add, or combine lines here.
+      </p>
+      {lines.map((line, i) => (
+        <div key={i} className="variation-line spark-part-line">
+          <input
+            type="text"
+            className="variation-line-input"
+            disabled={disabled}
+            value={line}
+            aria-label={`Piece ${i + 1}`}
+            onChange={(e) => {
+              const next = [...lines];
+              next[i] = e.target.value;
+              onChange(joinEditableLines(next));
+            }}
+          />
+          <button
+            type="button"
+            className="btn-danger-outline"
+            disabled={disabled}
+            onClick={() => {
+              const next = lines.filter((_, j) => j !== i);
+              onChange(next.length ? joinEditableLines(next) : "");
+            }}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        className="btn-add-line"
+        disabled={disabled}
+        onClick={() => onChange(joinEditableLines([...lines, ""]))}
       >
         + Add part
       </button>
@@ -180,6 +367,11 @@ export function SessionJourney({
   const [problemEdit, setProblemEdit] = useState(initial.problem_statement);
   const [titleEdit, setTitleEdit] = useState(initial.title ?? "");
   const [creativeAi, setCreativeAi] = useState<"openai" | "mock" | null>(null);
+  const [creativeLevers, setCreativeLevers] = useState<CreativeLevers>(() => ({
+    ...DEFAULT_CREATIVE_LEVERS,
+  }));
+  const [activeRail, setActiveRail] = useState<SparkRailKey>("situation");
+  const [compareMode, setCompareMode] = useState(false);
 
   useEffect(() => {
     void getHealth()
@@ -214,6 +406,19 @@ export function SessionJourney({
       });
     }
   }, [session.spark_state]);
+
+  useEffect(() => {
+    const saved = session.last_creative_levers;
+    if (saved && typeof saved === "object") {
+      const tool =
+        saved.tool ??
+        (saved as { cognitive_tool?: CreativeLevers["tool"] }).cognitive_tool ??
+        DEFAULT_CREATIVE_LEVERS.tool;
+      setCreativeLevers({ ...DEFAULT_CREATIVE_LEVERS, ...saved, tool });
+    } else {
+      setCreativeLevers({ ...DEFAULT_CREATIVE_LEVERS });
+    }
+  }, [session.session_id]);
 
   async function run<T>(key: string, fn: () => Promise<T>) {
     setErr(null);
@@ -368,7 +573,7 @@ export function SessionJourney({
     }
   }
 
-  /** Perspectives use SPARK parts/actions (saved variations optional). */
+  /** Perspectives use SPARK pieces/actions (saved variations optional). */
   const perspectivesAiLocked = session.current_step === "session_created";
 
   const perspectivesManualLocked = session.current_step === "session_created";
@@ -384,6 +589,26 @@ export function SessionJourney({
     loading !== null ||
     session.current_step === "session_created" ||
     !(session.insights && session.insights.length > 0);
+
+  const selectedPerspectives = session.perspectives.filter((p) => p.selected);
+
+  function handleRailSelect(key: SparkRailKey) {
+    setActiveRail(key);
+    const v = document.querySelector(
+      `[data-spark-phase="variation"][data-spark-anchor="${key}"]`,
+    );
+    const b = document.querySelector(
+      `[data-spark-phase="baseline"][data-spark-anchor="${key}"]`,
+    );
+    (v || b)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function jumpToInvention() {
+    document.getElementById("invention-builder")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
 
   const mainColumn = (
     <div className="stack journey-main-col">
@@ -448,7 +673,7 @@ export function SessionJourney({
       <section className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>1. SPARK breakdown</h2>
         <p className="muted">
-          Decompose into Situation, Parts, Actions, Role, Key goal. Generation
+          Define your lens: Situation, Pieces, Actions, Role, Key goal. Generation
           runs on the server (
           {creativeAi === "openai"
             ? "OpenAI"
@@ -491,7 +716,7 @@ export function SessionJourney({
         {session.spark_state ? (
           <div className="stack">
             {SPARK_FIELDS.map((f) => (
-              <div key={f}>
+              <div key={f} data-spark-anchor={f} data-spark-phase="baseline">
                 <label className="label" htmlFor={f === "parts" ? undefined : f}>
                   {SPARK_LABELS[f]}
                 </label>
@@ -528,16 +753,40 @@ export function SessionJourney({
       </section>
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>2. Variations</h2>
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>2. SPARK transformation</h2>
         <p className="muted">
-          Each SPARK dimension has its own list (max 6 lines per dimension).{" "}
-          <strong>Generate variations</strong> replaces prior AI lines for that
-          dimension with a fresh batch and keeps your own lines.{" "}
-          <strong>Save</strong> persists variations to the server.
+          Change perspective per element: for <strong>Situation</strong>, shift
+          context/constraints; for <strong>Pieces</strong>, replace, remove,
+          add, or combine; for <strong>Actions</strong>, reverse, automate, or
+          modify; for <strong>Role</strong>, change identity or user type; for{" "}
+          <strong>Key goal</strong>, change the objective or metric. Max 6 lines
+          per dimension. <strong>Generate variations</strong> refreshes AI lines;
+          <strong>Save</strong> persists.
         </p>
+        {session.spark_state ? (
+          <div className="row" style={{ marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+            <button
+              type="button"
+              disabled={loading !== null}
+              onClick={() =>
+                run("patch", () => patchSpark(sessionId, { ...sparkEdit }))
+              }
+            >
+              {loading === "patch" ? "…" : "Save SPARK baseline"}
+            </button>
+            <span className="muted" style={{ fontSize: "0.85rem" }}>
+              Saves baseline fields (section 1 and step 2) to the server.
+            </span>
+          </div>
+        ) : null}
 
         {SPARK_FIELDS.map((el) => (
-          <div key={el} className="spark-variation-block">
+          <div
+            key={el}
+            className="spark-variation-block"
+            data-spark-anchor={el}
+            data-spark-phase="variation"
+          >
             <div className="spark-variation-head">
               <h3 className="spark-variation-title">{SPARK_LABELS[el]}</h3>
               <div className="row spark-variation-actions">
@@ -568,9 +817,20 @@ export function SessionJourney({
                 </button>
               </div>
             </div>
+            {session.spark_state ? (
+              <SparkFieldBaselineEditor
+                field={el}
+                value={sparkEdit[el] ?? ""}
+                onChange={(next) =>
+                  setSparkEdit((s) => ({ ...s, [el]: next }))
+                }
+                disabled={loading !== null}
+              />
+            ) : null}
             <p className="muted" style={{ margin: "0.25rem 0 0.5rem", fontSize: "0.85rem" }}>
               {(variationDraft[el] ?? []).length}{" "}
-              {(variationDraft[el] ?? []).length === 1 ? "line" : "lines"}
+              {(variationDraft[el] ?? []).length === 1 ? "line" : "lines"}{" "}
+              (variation ideas below)
             </p>
             {(variationDraft[el] ?? []).map((row) => (
               <div
@@ -609,24 +869,47 @@ export function SessionJourney({
       <section className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>3. Perspectives</h2>
         <p className="muted">
-          Explore angles on your problem. AI combines <strong>Parts</strong> and{" "}
-          <strong>Actions</strong> (from saved variations if present, otherwise
-          from your SPARK text). Use after you have generated SPARK.
+          Explore angles on your problem. Use <strong>creative levers</strong> to
+          steer GenAI reframing, or the classic flow that combines{" "}
+          <strong>Pieces</strong> × <strong>Actions</strong> × creativity tools
+          (from saved variations when present). Requires SPARK from step 1.
         </p>
-        <div className="row perspective-toolbar">
+        <CreativeLeverPanel
+          value={creativeLevers}
+          onChange={setCreativeLevers}
+          disabled={loading !== null || perspectivesAiLocked}
+        />
+        <div className="row perspective-toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
           <button
             type="button"
             disabled={loading !== null || perspectivesAiLocked}
             title={
               perspectivesAiLocked
                 ? "Generate SPARK first."
-                : "Create perspective cards from Parts × Actions × creativity tools."
+                : "Generate perspectives using your lever settings (count follows divergence: 3 / 5 / 8, capped by max)."
             }
             onClick={() =>
-              run("persp", () => generatePerspectives(sessionId, 14))
+              run("persp-lev", () =>
+                generatePerspectives(sessionId, 16, creativeLevers),
+              )
             }
           >
-            {loading === "persp" ? "…" : "Generate perspectives (AI)"}
+            {loading === "persp-lev" ? "…" : "Generate with creative levers"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={loading !== null || perspectivesAiLocked}
+            title={
+              perspectivesAiLocked
+                ? "Generate SPARK first."
+                : "Legacy: Pieces × Actions × creativity tools matrix."
+            }
+            onClick={() =>
+              run("persp", () => generatePerspectives(sessionId, 14, null))
+            }
+          >
+            {loading === "persp" ? "…" : "Classic matrix (Pieces × Actions)"}
           </button>
           <button
             type="button"
@@ -636,198 +919,141 @@ export function SessionJourney({
           >
             {loading === "padd" ? "…" : "Add your own card"}
           </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={loading !== null || perspectivesAiLocked}
+            title="Pick a random SPARK target and generate with your other levers."
+            onClick={() => {
+              const next = {
+                ...creativeLevers,
+                spark_target: "Surprise Me" as const,
+              };
+              setCreativeLevers(next);
+              void run("persp-surprise", () =>
+                generatePerspectives(sessionId, 16, next),
+              );
+            }}
+          >
+            {loading === "persp-surprise" ? "…" : "Surprise me"}
+          </button>
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={compareMode}
+              onChange={(e) => setCompareMode(e.target.checked)}
+            />
+            Compare view
+          </label>
         </div>
-
-        {session.perspectives.length === 0 ? (
-          <p className="muted">
-            No perspective cards yet. Use <strong>Generate perspectives</strong>{" "}
-            or add your own.
-          </p>
-        ) : (
-          <div className="perspective-grid">
-            {session.perspectives.map((p, idx) => (
-              <article key={p.perspective_id} className="perspective-card">
-                <div className="perspective-card-top">
-                  <span className="perspective-badge">Idea {idx + 1}</span>
-                  <span className="perspective-badge subtle">
-                    {TOOL_LABELS[p.source_tool] ?? p.source_tool}
-                  </span>
-                </div>
-                <label className="label" htmlFor={`pt-${p.perspective_id}`}>
-                  What could this mean for your problem?
-                </label>
-                <textarea
-                  id={`pt-${p.perspective_id}`}
-                  rows={4}
-                  className="perspective-body-input"
-                  value={p.text || p.description || ""}
-                  onChange={(e) =>
-                    patchSessionPerspective(p.perspective_id, {
-                      text: e.target.value,
-                      description: e.target.value,
-                    })
-                  }
-                  placeholder="Write a short angle or reframing…"
-                />
-                {(p.part_ref || p.action_ref) && p.source_tool !== "user" ? (
-                  <div className="perspective-chips">
-                    {p.part_ref ? (
-                      <span className="chip">Part: {p.part_ref}</span>
-                    ) : null}
-                    {p.action_ref ? (
-                      <span className="chip">Action: {p.action_ref}</span>
-                    ) : null}
-                  </div>
-                ) : null}
-                <div className="perspective-card-controls">
-                  <label className="perspective-check">
-                    <input
-                      type="checkbox"
-                      checked={p.selected}
-                      disabled={loading !== null}
-                      onChange={(e) =>
-                        void togglePerspectiveField(
-                          p,
-                          "selected",
-                          e.target.checked,
-                        )
-                      }
-                    />
-                    Use when generating insights
-                  </label>
-                  <label className="perspective-check">
-                    <input
-                      type="checkbox"
-                      checked={p.promising ?? false}
-                      disabled={loading !== null}
-                      onChange={(e) =>
-                        void togglePerspectiveField(
-                          p,
-                          "promising",
-                          e.target.checked,
-                        )
-                      }
-                    />
-                    Promising
-                  </label>
-                </div>
-                <div className="perspective-card-actions">
-                  <button
-                    type="button"
-                    disabled={loading !== null}
-                    onClick={() => void savePerspectiveText(p.perspective_id)}
-                  >
-                    {loading === `psave-${p.perspective_id}` ? "…" : "Save text"}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-danger-outline"
-                    disabled={loading !== null}
-                    onClick={() => void removePerspectiveCard(p)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
+        {(session.last_recommended_perspective ||
+          (session.last_insight_candidates &&
+            session.last_insight_candidates.length > 0)) && (
+          <div
+            style={{
+              marginTop: "0.75rem",
+              padding: "0.65rem 0.75rem",
+              borderRadius: "6px",
+              border: "1px solid var(--border, rgba(255,255,255,0.12))",
+              background: "rgba(59, 130, 246, 0.06)",
+            }}
+          >
+            <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.35rem" }}>
+              Lever run output (persisted on the session)
+            </div>
+            {session.last_recommended_perspective ? (
+              <div style={{ marginBottom: "0.5rem" }}>
+                <strong style={{ fontSize: "0.85rem" }}>Recommended perspective</strong>
+                <p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap" }}>
+                  {session.last_recommended_perspective}
+                </p>
+              </div>
+            ) : null}
+            {session.last_insight_candidates &&
+            session.last_insight_candidates.length > 0 ? (
+              <div>
+                <strong style={{ fontSize: "0.85rem" }}>Insight candidates</strong>
+                <ul style={{ margin: "0.35rem 0 0", paddingLeft: "1.25rem" }}>
+                  {session.last_insight_candidates.map((line, i) => (
+                    <li key={i} style={{ marginBottom: "0.2rem" }}>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
         )}
+
+        <PerspectiveCards
+          perspectives={session.perspectives}
+          loading={loading}
+          compareMode={compareMode}
+          onPatchLocal={patchSessionPerspective}
+          onToggleField={togglePerspectiveField}
+          onSaveText={(id) => void savePerspectiveText(id)}
+          onRemove={removePerspectiveCard}
+        />
       </section>
 
-      <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>4. Insights</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Requires at least one perspective (from AI or your own card).
-        </p>
-        <button
-          type="button"
-          disabled={insightsLocked}
-          title={
-            insightsLocked && session.perspectives.length === 0
-              ? "Add perspectives in section 3 first."
-              : "Synthesize insights from selected perspectives (or all if none selected)."
-          }
-          onClick={() => run("ins", () => generateInsights(sessionId))}
-        >
-          {loading === "ins" ? "…" : "Generate insights"}
-        </button>
-        <ul>
-          {(session.insights ?? []).map((ins) => (
-            <li key={ins.insight_id}>{ins.text}</li>
-          ))}
-        </ul>
-      </section>
+      <InventionBuilder
+        session={session}
+        loading={loading}
+        inventionLocked={inventionLocked}
+        onGenerate={() => run("inv", () => generateInvention(sessionId))}
+      />
 
-      <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>5. Invention</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Run after you have generated insights.
-        </p>
-        <button
-          type="button"
-          disabled={inventionLocked}
-          title={
-            inventionLocked && !(session.insights && session.insights.length)
-              ? "Generate insights in section 4 first."
-              : "Propose one invention concept from your insights."
-          }
-          onClick={() => run("inv", () => generateInvention(sessionId))}
-        >
-          {loading === "inv" ? "…" : "Generate invention"}
-        </button>
-        {session.invention ? (
-          <div>
-            <h3>{session.invention.title}</h3>
-            <p>{session.invention.description}</p>
-            <p className="muted">{session.invention.benefits}</p>
-            <p className="muted">{session.invention.next_steps}</p>
-          </div>
-        ) : null}
-        {(session.inventions?.length ?? 0) > 1 ? (
-          <div className="muted" style={{ fontSize: "0.85rem" }}>
-            {session.inventions!.length} invention(s) recorded in this session
-            (latest shown above).
-          </div>
-        ) : null}
-      </section>
-
-      <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>6. Enlightenment</h2>
-        <button
-          type="button"
-          disabled={loading !== null}
-          onClick={() => run("enl", () => generateEnlightenment(sessionId))}
-        >
-          {loading === "enl" ? "…" : "Generate enlightenment"}
-        </button>
-        {session.enlightenment ? (
-          <div>
-            <p>{session.enlightenment.summary}</p>
-            <ul>
-              {session.enlightenment.principles.map((x, i) => (
-                <li key={i}>{x}</li>
-              ))}
-            </ul>
-            <p className="muted">{session.enlightenment.applies_elsewhere}</p>
-          </div>
-        ) : null}
-      </section>
+      <EnlightenmentView
+        session={session}
+        loading={loading}
+        onGenerate={() => run("enl", () => generateEnlightenment(sessionId))}
+      />
     </div>
   );
 
   return (
-    <div className="journey-page">
-      <div className="journey-layout">
-        {mainColumn}
-        <aside className="journey-history-aside">
-          <details className="card history-details">
-            <summary className="history-summary">Interaction history</summary>
-            <div className="history-body">
+    <div className="journey-page mx-auto w-full max-w-[1600px] px-2 pb-8 sm:px-4">
+      <SPARKWorkspace
+        rail={
+          <SPARKRail
+            activeKey={activeRail}
+            onSelect={handleRailSelect}
+            statusFor={(key) => sparkRailStatus(session, activeRail, key)}
+          />
+        }
+        center={mainColumn}
+        tray={
+          <InsightsTray
+            session={session}
+            progressPercent={workflowProgressPercent(session.current_step)}
+            nextHint={suggestedNextMove(session)}
+            selectedPerspectives={selectedPerspectives}
+            insightsLocked={insightsLocked}
+            inventionLocked={inventionLocked}
+            loading={loading}
+            onGenerateInsights={() =>
+              run("ins", () => generateInsights(sessionId))
+            }
+            onGenerateInvention={() =>
+              run("inv", () => generateInvention(sessionId))
+            }
+            onGenerateEnlightenment={() =>
+              run("enl", () => generateEnlightenment(sessionId))
+            }
+            onJumpToInvention={jumpToInvention}
+          />
+        }
+        footer={
+          <details className="card history-details rounded-2xl border border-slate-200 bg-white shadow-card">
+            <summary className="history-summary cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">
+              Thinking trail · interaction history
+            </summary>
+            <div className="history-body px-4 pb-4">
               <HistoryTimeline entries={session.history} />
             </div>
           </details>
-        </aside>
-      </div>
+        }
+      />
     </div>
   );
 }

@@ -8,7 +8,7 @@ SPARK_SYSTEM = (
     "Do NOT include field labels or meta text in the values (no prefixes like 'Parts:', 'Situation:', "
     "'Concrete nouns', 'Also consider:', or instructions—only the actual content for that dimension). "
     "situation = context and backdrop (who/when/where/why this matters; pressures and conditions). "
-    "parts = CONCRETE nouns and named entities ONLY—one item per line when multiple (use newline characters between items). "
+    "parts (product language: Pieces) = CONCRETE nouns and named entities ONLY—one item per line when multiple (use newline characters between items). "
     "No verbs, conjunctions (e.g. while, and), adverbs, or truncated words. Each line: a single noun phrase (e.g. Joggers, Water bottle, Heat advisory). "
     "actions = VERBS and behaviors—what people or systems do, try, or must accomplish. "
     "role = hats or relationships—who is involved (e.g. user, builder, gatekeeper) and their stance. "

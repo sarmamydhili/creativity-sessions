@@ -1,4 +1,6 @@
 import type {
+  CreativeLevers,
+  PerspectivesGenerateResponse,
   SessionDetail,
   SessionListResponse,
   VariationItem,
@@ -143,14 +145,19 @@ export async function persistVariations(
   });
 }
 
-/** GenAI: meaningful Parts × Actions × creativity-tool combinations. */
+/** GenAI: classic matrix, or pass `creative_levers` for CREATIVE LEVER CONTROL. */
 export async function generatePerspectives(
   sessionId: string,
   maxPerspectives = 16,
-): Promise<{ session: SessionDetail; perspectives: import("./types").Perspective[] }> {
+  creativeLevers?: CreativeLevers | null,
+): Promise<PerspectivesGenerateResponse> {
+  const body: Record<string, unknown> = { max_perspectives: maxPerspectives };
+  if (creativeLevers != null) {
+    body.creative_levers = creativeLevers;
+  }
   return api(`/api/sessions/${encodeURIComponent(sessionId)}/perspectives`, {
     method: "POST",
-    body: JSON.stringify({ max_perspectives: maxPerspectives }),
+    body: JSON.stringify(body),
   });
 }
 

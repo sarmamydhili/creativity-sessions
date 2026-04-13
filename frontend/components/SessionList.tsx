@@ -48,39 +48,35 @@ export function SessionList({ items: initialItems }: { items: SessionSummary[] }
     );
   }
   return (
-    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+    <ul className="m-0 list-none space-y-3 p-0">
       {items.map((s) => (
-        <li key={s.session_id} className="card">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <Link href={`/sessions/${s.session_id}`}>
-              <strong>{s.title || "Untitled"}</strong>
+        <li
+          key={s.session_id}
+          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <Link
+              href={`/sessions/${s.session_id}`}
+              className="font-semibold text-slate-900 hover:text-spark-situation"
+            >
+              {s.title || "Untitled"}
             </Link>
             <button
               type="button"
-              className="muted"
-              style={{
-                border: "1px solid var(--border)",
-                background: "transparent",
-                color: "var(--text)",
-                padding: "0.25rem 0.5rem",
-                borderRadius: 6,
-                fontSize: "0.8rem",
-                cursor: busyId === s.session_id ? "wait" : "pointer",
-              }}
+              className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               disabled={busyId !== null}
               onClick={() => void remove(s.session_id)}
             >
               {busyId === s.session_id ? "…" : "Delete"}
             </button>
           </div>
-          <div className="muted" style={{ marginTop: "0.35rem" }}>
-            {s.problem_statement.slice(0, 120)}
-            {s.problem_statement.length > 120 ? "…" : ""}
-          </div>
-          <div className="muted">
+          <p className="mt-2 text-sm text-slate-600 line-clamp-2">
+            {s.problem_statement}
+          </p>
+          <p className="mt-2 text-xs text-slate-400">
             Step: {stepLabel(s.current_step)} · {s.status} · Updated{" "}
             {new Date(s.updated_at).toLocaleString()}
-          </div>
+          </p>
         </li>
       ))}
     </ul>

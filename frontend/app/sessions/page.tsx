@@ -15,15 +15,26 @@ export default async function SessionsPage() {
   }
 
   return (
-    <div>
-      <h1>Sessions</h1>
-      <p className="muted">{total} total</p>
-      {error ? <p className="error">{error}</p> : null}
-      <p>
-        <Link href="/sessions/new">New session</Link> ·{" "}
-        <Link href="/">Home</Link>
+    <div className="mx-auto max-w-2xl px-2 py-8">
+      <p className="mb-4 text-sm">
+        <Link href="/" className="font-medium text-spark-situation hover:underline">
+          ← Home
+        </Link>
       </p>
-      <SessionList items={items} />
+      <h1 className="text-2xl font-bold text-slate-900">Sessions</h1>
+      <p className="mt-1 text-sm text-slate-500">{total} total</p>
+      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      <p className="mt-6">
+        <Link
+          href="/sessions/new"
+          className="inline-flex rounded-xl bg-spark-situation px-4 py-2.5 text-sm font-semibold text-white shadow-soft"
+        >
+          New session
+        </Link>
+      </p>
+      <div className="mt-8">
+        <SessionList items={items} />
+      </div>
     </div>
   );
 }

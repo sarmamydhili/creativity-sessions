@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from fastapi import HTTPException, status
 
+from app.models.creative_levers import CreativeLevers
 from app.models.session import (
     EnlightenmentArtifact,
     HistoryEntry,
@@ -67,6 +68,12 @@ def _normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
         d["enlightenment"] = None
     if "deleted" not in d:
         d["deleted"] = False
+    if "last_creative_levers" not in d:
+        d["last_creative_levers"] = None
+    if "last_recommended_perspective" not in d:
+        d["last_recommended_perspective"] = None
+    if "last_insight_candidates" not in d:
+        d["last_insight_candidates"] = []
     return d
 
 
@@ -208,6 +215,20 @@ def _doc_to_detail(doc: dict[str, Any]) -> SessionDetail:
         invention = inventions[-1]
     enlightenment = _parse_enlightenment(d.get("enlightenment"))
 
+    last_creative_levers: CreativeLevers | None = None
+    raw_levers = d.get("last_creative_levers")
+    if isinstance(raw_levers, dict):
+        try:
+            last_creative_levers = CreativeLevers.model_validate(raw_levers)
+        except Exception:
+            last_creative_levers = None
+    last_rec = d.get("last_recommended_perspective")
+    last_rec_str = str(last_rec).strip() if last_rec else None
+    last_ins_raw = d.get("last_insight_candidates") or []
+    last_insight_candidates: list[str] = []
+    if isinstance(last_ins_raw, list):
+        last_insight_candidates = [str(x).strip() for x in last_ins_raw if str(x).strip()]
+
     return SessionDetail(
         session_id=d["session_id"],
         title=d.get("title"),
@@ -219,6 +240,9 @@ def _doc_to_detail(doc: dict[str, Any]) -> SessionDetail:
         spark_state=spark_state,
         variations=_parse_variations_from_raw(d.get("variations")),
         tool_applications=list(d.get("tool_applications") or []),
+        last_creative_levers=last_creative_levers,
+        last_recommended_perspective=last_rec_str,
+        last_insight_candidates=last_insight_candidates,
         perspectives=perspectives,
         insights=insights,
         invention=invention,

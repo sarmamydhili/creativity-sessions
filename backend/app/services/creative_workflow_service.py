@@ -21,6 +21,7 @@ from app.models.session import (
     PerspectiveCreateRequest,
     PerspectiveSelectionResponse,
     PerspectiveUpdateRequest,
+    PerspectivesGenerateRequest,
     PerspectivesGenerateResponse,
     SessionDetail,
     SparkGenerateResponse,
@@ -31,6 +32,7 @@ from app.models.session import (
     WorkflowStep,
 )
 from app.repositories.session_repository import SessionRepository
+from app.services.creative_lever_prompt_builder import divergence_to_count
 from app.services.session_service import (
     SessionService,
     _normalize_doc,
@@ -280,7 +282,7 @@ class CreativeWorkflowService:
     async def generate_perspectives(
         self,
         session_id: str,
-        max_perspectives: int,
+        req: PerspectivesGenerateRequest,
     ) -> PerspectivesGenerateResponse:
         doc = await self._repo.find_by_session_id(session_id)
         if doc is None:
@@ -290,50 +292,80 @@ class CreativeWorkflowService:
         spark = SparkState(
             **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
         )
-        v_items = _parse_variations_from_raw(d.get("variations"))
-        parts_c = _candidates_for_dimension("parts", v_items, spark)
-        actions_c = _candidates_for_dimension("actions", v_items, spark)
-        if not parts_c:
-            parts_c = ["(SPARK parts)"]
-        if not actions_c:
-            actions_c = ["(SPARK actions)"]
-        raw_new = await self._provider.perspectives_from_part_action_tool_matrix(
-            problem_statement=d["problem_statement"],
-            spark=spark,
-            parts_candidates=parts_c,
-            actions_candidates=actions_c,
-            max_perspectives=max_perspectives,
-        )
         next_iter = int(d.get("current_iteration", 1)) + 1
+        recommended: str | None = None
+        insight_cands: list[str] = []
+        levers_applied = req.creative_levers
+
+        if req.creative_levers is not None:
+            want = divergence_to_count(req.creative_levers.divergence)
+            num_outputs = min(want, req.max_perspectives)
+            raw_new, recommended, insight_cands = await self._provider.perspectives_with_creative_levers(
+                problem_statement=d["problem_statement"],
+                spark=spark,
+                levers=req.creative_levers,
+                num_outputs=num_outputs,
+            )
+            mode = "creative_levers"
+            hist_payload: dict[str, Any] = {
+                "mode": mode,
+                "creative_levers": req.creative_levers.model_dump(by_alias=True),
+                "recommended_perspective": recommended,
+                "insight_candidates": insight_cands,
+                "count": len(raw_new),
+            }
+            set_extra: dict[str, Any] = {
+                "last_creative_levers": req.creative_levers.model_dump(by_alias=True),
+                "last_recommended_perspective": recommended,
+                "last_insight_candidates": insight_cands,
+            }
+        else:
+            v_items = _parse_variations_from_raw(d.get("variations"))
+            parts_c = _candidates_for_dimension("parts", v_items, spark)
+            actions_c = _candidates_for_dimension("actions", v_items, spark)
+            if not parts_c:
+                parts_c = ["(SPARK parts)"]
+            if not actions_c:
+                actions_c = ["(SPARK actions)"]
+            raw_new = await self._provider.perspectives_from_part_action_tool_matrix(
+                problem_statement=d["problem_statement"],
+                spark=spark,
+                parts_candidates=parts_c,
+                actions_candidates=actions_c,
+                max_perspectives=req.max_perspectives,
+            )
+            mode = "parts_actions_tool_matrix"
+            hist_payload = {"mode": mode, "count": len(raw_new)}
+            set_extra = {}
+
         new_ps = [p.model_copy(update={"iteration": next_iter}) for p in raw_new]
         existing = _load_perspectives(d)
         combined = existing + new_ps
         tool_apps = list(d.get("tool_applications") or [])
-        tool_apps.append(
-            {
-                "mode": "parts_actions_tool_matrix",
-                "iteration": next_iter,
-                "perspective_ids": [p.perspective_id for p in new_ps],
-            }
-        )
-        hist = self._hist(
-            HistoryEventKind.perspectives_generated,
-            {"mode": "parts_actions_tool_matrix", "count": len(new_ps)},
-        )
-        out = await self._repo.append_history_and_set(
-            session_id,
-            hist,
-            {
-                "perspectives": [p.model_dump(mode="python") for p in combined],
-                "tool_applications": tool_apps,
-                "current_step": WorkflowStep.perspectives_generated.value,
-                "current_iteration": next_iter,
-            },
-        )
+        entry: dict[str, Any] = {
+            "mode": mode,
+            "iteration": next_iter,
+            "perspective_ids": [p.perspective_id for p in new_ps],
+        }
+        if req.creative_levers is not None:
+            entry["creative_levers"] = req.creative_levers.model_dump(by_alias=True)
+        tool_apps.append(entry)
+        hist = self._hist(HistoryEventKind.perspectives_generated, hist_payload)
+        mongo_update: dict[str, Any] = {
+            "perspectives": [p.model_dump(mode="python") for p in combined],
+            "tool_applications": tool_apps,
+            "current_step": WorkflowStep.perspectives_generated.value,
+            "current_iteration": next_iter,
+            **set_extra,
+        }
+        out = await self._repo.append_history_and_set(session_id, hist, mongo_update)
         assert out is not None
         return PerspectivesGenerateResponse(
             session=self._sessions.to_detail(out),
             perspectives=new_ps,
+            recommended_perspective=recommended,
+            insight_candidates=insight_cands,
+            creative_levers_applied=levers_applied,
         )
 
     async def toggle_perspective_selection(

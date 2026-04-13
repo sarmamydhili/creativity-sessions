@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Creativity Sessions",
-  description: "Multi-session creativity workflow (Hydrating Jogger sample in UI copy)",
+  title: "SPARK · Creativity Sessions",
+  description:
+    "Transform your thinking — SPARK framing, creative levers, perspectives, and learning.",
 };
 
 export default function RootLayout({
@@ -13,8 +15,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <main>{children}</main>
+      <body className="min-h-screen bg-slate-50 antialiased">
+        <AppShell>
+          <main className="mx-auto min-h-screen w-full max-w-[1800px] px-3 pt-4 pb-28 sm:px-5">
+            {children}
+          </main>
+        </AppShell>
       </body>
     </html>
   );

@@ -9,11 +9,16 @@ import httpx
 
 from app.ai.prompts import templates as prompt_templates
 from app.ai.providers.creative_base import CreativeProvider
+from app.models.creative_levers import CreativeLevers
 from app.models.session import (
     EnlightenmentArtifact,
     InventionArtifact,
     Perspective,
     SparkState,
+)
+from app.services.creative_lever_prompt_builder import (
+    build_lever_system_prompt,
+    build_lever_user_prompt,
 )
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
@@ -190,6 +195,53 @@ class OpenAICreativeProvider(CreativeProvider):
                 )
             )
         return out[:max_perspectives]
+
+    async def perspectives_with_creative_levers(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        levers: CreativeLevers,
+        num_outputs: int,
+    ) -> tuple[list[Perspective], str, list[str]]:
+        system = build_lever_system_prompt()
+        user = build_lever_user_prompt(
+            problem=problem_statement,
+            spark=spark,
+            levers=levers,
+            num_outputs=num_outputs,
+        )
+        raw = await self._chat_json(system=system, user=user)
+        items = raw.get("perspectives")
+        if not isinstance(items, list):
+            items = []
+        out: list[Perspective] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            txt = str(it.get("text") or it.get("description", "")).strip()
+            if not txt:
+                continue
+            out.append(
+                Perspective(
+                    perspective_id=str(uuid4()),
+                    description=txt,
+                    text=txt,
+                    source_tool=str(it.get("source_tool", "analogy")),
+                    spark_element=str(it.get("spark_element", "parts")),
+                    part_ref=it.get("part_ref"),
+                    action_ref=it.get("action_ref"),
+                    selected=False,
+                )
+            )
+        rec = str(raw.get("recommended_perspective", "")).strip()
+        if not rec and out:
+            rec = out[0].text
+        ins_raw = raw.get("insight_candidates")
+        insight_candidates: list[str] = []
+        if isinstance(ins_raw, list):
+            insight_candidates = [str(x).strip() for x in ins_raw if str(x).strip()]
+        return out[:num_outputs], rec, insight_candidates
 
     async def insights_from_perspectives(
         self,

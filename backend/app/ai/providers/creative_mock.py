@@ -5,12 +5,14 @@ import re
 from uuid import uuid4
 
 from app.ai.providers.creative_base import CreativeProvider
+from app.models.creative_levers import CreativeLevers
 from app.models.session import (
     EnlightenmentArtifact,
     InventionArtifact,
     Perspective,
     SparkState,
 )
+from app.services.creative_lever_prompt_builder import resolve_spark_target_text
 
 
 def _clip(text: str, max_len: int) -> str:
@@ -303,6 +305,60 @@ class CreativeMockProvider(CreativeProvider):
                 )
             )
         return out
+
+    async def perspectives_with_creative_levers(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        levers: CreativeLevers,
+        num_outputs: int,
+    ) -> tuple[list[Perspective], str, list[str]]:
+        ps = _clip((problem_statement or "").strip(), 160) or "the problem"
+        _, el = resolve_spark_target_text(spark, levers.spark_target)
+        raw_target = (getattr(spark, el, None) or "").strip()
+        target_snip = _clip(raw_target.replace("\n", " "), 120) or _clip(spark.situation, 120) or ps
+        depth = levers.depth.lower()
+        domain = levers.domain_lens
+        tool_slug_map: dict[str, str] = {
+            "Analogy": "analogy",
+            "Re-categorization": "recategorization",
+            "Combination": "combination",
+            "Association": "association",
+            "Auto-select best": "association",
+        }
+        tool_slug = tool_slug_map.get(levers.cognitive_tool, "analogy")
+        n = max(1, min(num_outputs, 32))
+        out: list[Perspective] = []
+        for i in range(n):
+            desc = (
+                f"[{levers.cognitive_tool} · {depth} · {domain}] "
+                f"Angle {i + 1} on «{target_snip}»: reinterpret «{ps}» "
+                f"through {levers.abstraction.lower()} abstraction and "
+                f"{levers.goal_priority.lower()} priority "
+                f"({levers.novelty.lower()} novelty)."
+            )
+            out.append(
+                Perspective(
+                    perspective_id=str(uuid4()),
+                    description=desc,
+                    text=desc,
+                    source_tool=tool_slug,
+                    spark_element=el,
+                    part_ref=_clip(target_snip, 80),
+                    action_ref=None,
+                )
+            )
+        rec = (
+            f"Recommended: prioritize «{target_snip}» with {levers.cognitive_tool} "
+            f"under a {levers.domain_lens} lens, emphasizing {levers.goal_priority}."
+        )
+        insight_candidates = [
+            f"Test whether {levers.spark_target} is the real bottleneck before scaling a fix.",
+            f"If {levers.goal_priority} matters most, narrow to one measurable signal for the next iteration.",
+            f"Contrast a {levers.depth.lower()} path with one more radical option to surface tradeoffs.",
+        ]
+        return out, rec, insight_candidates
 
     async def insights_from_perspectives(
         self,
