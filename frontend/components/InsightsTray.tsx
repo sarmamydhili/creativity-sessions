@@ -5,8 +5,8 @@ import type { Perspective, SessionDetail } from "@/lib/types";
 export type InsightsTrayProps = {
   session: SessionDetail;
   progressPercent: number;
-  nextHint: string;
   selectedPerspectives: Perspective[];
+  promisingPerspectives: Perspective[];
   insightsLocked: boolean;
   inventionLocked: boolean;
   loading: string | null;
@@ -19,8 +19,8 @@ export type InsightsTrayProps = {
 export function InsightsTray({
   session,
   progressPercent,
-  nextHint,
   selectedPerspectives,
+  promisingPerspectives,
   insightsLocked,
   inventionLocked,
   loading,
@@ -30,6 +30,10 @@ export function InsightsTray({
   onJumpToInvention,
 }: InsightsTrayProps) {
   const insights = session.insights ?? [];
+  const inv = session.invention;
+  const enl = session.enlightenment;
+  const rec = session.last_recommended_perspective?.trim();
+  const leverInsights = session.last_insight_candidates ?? [];
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
@@ -46,37 +50,75 @@ export function InsightsTray({
         <p className="mt-1 text-right text-xs text-slate-500">{progressPercent}%</p>
       </div>
 
-      <div className="rounded-xl bg-amber-50/80 px-3 py-2 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-100">
-        <span className="font-semibold text-amber-800">Suggested next · </span>
-        {nextHint}
-      </div>
-
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          Selected for synthesis
-        </p>
-        {selectedPerspectives.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">
-            No selection — insights will use all perspectives.
+      {selectedPerspectives.length > 0 ? (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Selected ideas
           </p>
-        ) : (
-          <ul className="mt-2 max-h-32 space-y-1.5 overflow-y-auto text-xs text-slate-700">
+          <ul className="mt-2 max-h-28 space-y-1.5 overflow-y-auto text-xs text-slate-700">
             {selectedPerspectives.map((p) => (
               <li
                 key={p.perspective_id}
-                className="rounded-lg bg-slate-50 px-2 py-1.5 line-clamp-2"
+                className="rounded-lg bg-blue-50/80 px-2 py-1.5 line-clamp-3 ring-1 ring-blue-100"
               >
-                {(p.text || p.description || "").slice(0, 120)}
-                {(p.text || p.description || "").length > 120 ? "…" : ""}
+                {(p.text || p.description || "").slice(0, 200)}
+                {(p.text || p.description || "").length > 200 ? "…" : ""}
               </li>
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">
+          No perspectives selected — insights will use all generated cards unless
+          you mark selections in the canvas.
+        </p>
+      )}
+
+      {promisingPerspectives.length > 0 ? (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Marked promising
+          </p>
+          <ul className="mt-2 max-h-24 space-y-1.5 overflow-y-auto text-xs text-slate-700">
+            {promisingPerspectives.map((p) => (
+              <li
+                key={p.perspective_id}
+                className="rounded-lg bg-emerald-50/80 px-2 py-1.5 line-clamp-2 ring-1 ring-emerald-100"
+              >
+                {(p.text || p.description || "").slice(0, 140)}
+                {(p.text || p.description || "").length > 140 ? "…" : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {rec || leverInsights.length > 0 ? (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Latest lever output
+          </p>
+          {rec ? (
+            <p className="mt-2 rounded-lg bg-violet-50/80 px-2 py-2 text-xs leading-snug text-slate-800 ring-1 ring-violet-100">
+              <span className="font-semibold text-violet-900">Recommended · </span>
+              {rec}
+            </p>
+          ) : null}
+          {leverInsights.length > 0 ? (
+            <ul className="mt-2 space-y-1 text-xs text-slate-700">
+              {leverInsights.map((t, i) => (
+                <li key={i} className="rounded border border-slate-100 bg-slate-50/90 px-2 py-1.5">
+                  {t}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          Live insights
+          Insights
         </p>
         {insights.length === 0 ? (
           <p className="mt-1 text-xs text-slate-500">None yet.</p>
@@ -93,6 +135,29 @@ export function InsightsTray({
           </ul>
         )}
       </div>
+
+      {inv ? (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Invention
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900 line-clamp-2">
+            {inv.title}
+          </p>
+          <p className="mt-1 text-xs text-slate-600 line-clamp-3">{inv.description}</p>
+        </div>
+      ) : null}
+
+      {enl ? (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Learning
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-slate-700 line-clamp-4">
+            {enl.summary}
+          </p>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2 border-t border-slate-100 pt-3">
         <button

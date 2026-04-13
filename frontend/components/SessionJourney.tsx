@@ -34,11 +34,7 @@ import { PerspectiveCards } from "@/components/PerspectiveCards";
 import { SPARKRail } from "@/components/SPARKRail";
 import { SPARKWorkspace } from "@/components/SPARKWorkspace";
 import type { SparkRailKey } from "@/lib/spark-ui";
-import {
-  suggestedNextMove,
-  sparkRailStatus,
-  workflowProgressPercent,
-} from "@/lib/spark-ui";
+import { sparkRailStatus, workflowProgressPercent } from "@/lib/spark-ui";
 
 const SPARK_FIELDS = [
   "situation",
@@ -158,23 +154,108 @@ function getEditableLines(
     const n = normalizeStoredParts(raw);
     return n.trim() === "" ? [""] : n.split(/\r?\n/);
   }
-  const lines = splitBaselineForDisplay(raw, field);
+  const rawStr = raw ?? "";
+  if (!rawStr.trim()) return [""];
+  if (rawStr.includes("\n") || rawStr.includes("\r")) {
+    return rawStr.replace(/\r\n/g, "\n").split("\n");
+  }
+  const lines = splitBaselineForDisplay(rawStr, field);
   return lines.length ? lines : [""];
 }
 
+/** Join baseline editor rows; preserve intentional blank rows (e.g. new line after + Add). */
 function joinEditableLines(lines: string[]): string {
   const t = lines.map((l) => l.trimEnd());
-  while (t.length > 1 && t[t.length - 1] === "") {
-    t.pop();
-  }
+  if (t.length === 0) return "";
+  if (t.every((x) => x === "")) return "";
   return t.join("\n");
+}
+
+function joinPartsLines(lines: string[]): string {
+  const t = lines.map((l) => l.trimEnd());
+  if (t.every((x) => x === "")) return "";
+  return t.join("\n");
+}
+
+/**
+ * Split Pieces baseline for editing without trimming the whole string (trim would
+ * strip trailing newlines and break "+ Add Piece" new rows).
+ */
+function getPartsEditorLines(raw: string): string[] {
+  const v = (raw ?? "").replace(/\r\n/g, "\n");
+  if (!v.trim()) return [""];
+  if (!v.includes("\n") && (v.includes(";") || v.split(",").length > 3)) {
+    const n = normalizeStoredParts(v);
+    if (!n.trim()) return [""];
+    return n.split("\n");
+  }
+  return v.split("\n");
+}
+
+const BASELINE_ADD_LABELS: Record<(typeof SPARK_FIELDS)[number], string> = {
+  situation: "+ Add Situation",
+  parts: "+ Add Piece",
+  actions: "+ Add Action",
+  role: "+ Add Role",
+  key_goal: "+ Add Goal",
+};
+
+/** Read-only baseline display for section 1 after Generate SPARK (edits happen in transformation). */
+function SparkBaselineReadOnly({
+  field,
+  value,
+}: {
+  field: (typeof SPARK_FIELDS)[number];
+  value: string;
+}) {
+  const lines = splitBaselineForDisplay(value, field);
+  const empty =
+    !lines.length || (lines.length === 1 && !(lines[0] ?? "").trim());
+  if (empty) {
+    return (
+      <p className="muted" style={{ margin: 0, fontSize: "0.875rem" }}>
+        (empty)
+      </p>
+    );
+  }
+  return (
+    <div
+      className="spark-baseline-readonly"
+      style={{
+        ...BASELINE_BOX,
+        marginBottom: "0.75rem",
+        cursor: "default",
+        userSelect: "text",
+      }}
+    >
+      {field === "parts" ? (
+        <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+          {lines.map((line, i) => (
+            <li key={i} style={{ marginBottom: "0.25rem" }}>
+              {line}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div
+          style={{
+            whiteSpace: "pre-wrap",
+            fontSize: "0.9rem",
+            lineHeight: 1.5,
+          }}
+        >
+          {lines.join("\n")}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const BASELINE_LINE_HINTS: Record<(typeof SPARK_FIELDS)[number], string> = {
   situation:
     "One line per beat (context, pressures, backdrop). Add, edit, or remove lines.",
   parts:
-    "One piece (noun / entity) per line. Same as section 1; edits stay in sync.",
+    "One piece (noun / entity) per line. Edits here are your baseline for this dimension.",
   actions: "One line per action or verb phrase. Add, edit, or remove lines.",
   role: "One line per role, hat, or stakeholder.",
   key_goal: "One line per goal or success criterion.",
@@ -188,16 +269,76 @@ const BASELINE_BOX: CSSProperties = {
   background: "rgba(127, 127, 127, 0.06)",
 };
 
+function AddOrGenerateRow({
+  addLabel,
+  disabled,
+  onAdd,
+  onGenerate,
+  generateDisabled,
+  generateLoading,
+}: {
+  addLabel: string;
+  disabled?: boolean;
+  onAdd: () => void;
+  onGenerate: () => void;
+  generateDisabled?: boolean;
+  generateLoading?: boolean;
+}) {
+  return (
+    <div
+      className="row"
+      style={{
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: "0.5rem",
+        marginTop: "0.35rem",
+      }}
+    >
+      <button
+        type="button"
+        className="btn-add-line"
+        disabled={disabled}
+        onClick={onAdd}
+      >
+        {addLabel}
+      </button>
+      <span className="muted" style={{ fontSize: "0.85rem" }}>
+        or
+      </span>
+      <button
+        type="button"
+        className="btn-secondary"
+        style={{ fontSize: "0.875rem", padding: "0.4rem 0.75rem" }}
+        disabled={disabled || generateDisabled}
+        title={
+          generateDisabled
+            ? "Generate SPARK first."
+            : "Generate AI variation lines for this dimension."
+        }
+        onClick={onGenerate}
+      >
+        {generateLoading ? "…" : "Generate"}
+      </button>
+    </div>
+  );
+}
+
 function SparkLinesListEditor({
   field,
   value,
   onChange,
   disabled,
+  onGenerate,
+  generateDisabled,
+  generateLoading,
 }: {
   field: Exclude<(typeof SPARK_FIELDS)[number], "parts">;
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  onGenerate: () => void;
+  generateDisabled?: boolean;
+  generateLoading?: boolean;
 }) {
   const lines = getEditableLines(value, field);
   return (
@@ -232,14 +373,14 @@ function SparkLinesListEditor({
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        className="btn-add-line"
+      <AddOrGenerateRow
+        addLabel={BASELINE_ADD_LABELS[field]}
         disabled={disabled}
-        onClick={() => onChange(joinEditableLines([...lines, ""]))}
-      >
-        + Add line
-      </button>
+        onAdd={() => onChange(joinEditableLines([...lines, ""]))}
+        onGenerate={onGenerate}
+        generateDisabled={generateDisabled}
+        generateLoading={generateLoading}
+      />
     </div>
   );
 }
@@ -249,11 +390,17 @@ function SparkFieldBaselineEditor({
   value,
   onChange,
   disabled,
+  onGenerate,
+  generateDisabled,
+  generateLoading,
 }: {
   field: (typeof SPARK_FIELDS)[number];
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  onGenerate: () => void;
+  generateDisabled?: boolean;
+  generateLoading?: boolean;
 }) {
   return (
     <div className="spark-baseline-ref" style={BASELINE_BOX}>
@@ -265,17 +412,20 @@ function SparkFieldBaselineEditor({
           marginBottom: "0.25rem",
         }}
       >
-        {SPARK_LABELS[field]} baseline (step 1)
+        {SPARK_LABELS[field]} baseline
       </div>
       <p className="muted" style={{ margin: "0 0 0.5rem", fontSize: "0.8rem" }}>
-        Edit the saved SPARK text here or in section 1—same data. Add, change, or
-        remove lines, then save.
+        Edit the generated baseline here (section 1 shows it read-only). Add,
+        change, or remove lines, then save.
       </p>
       {field === "parts" ? (
         <SparkPartsListEditor
           value={value}
           onChange={onChange}
           disabled={disabled}
+          onGenerate={onGenerate}
+          generateDisabled={generateDisabled}
+          generateLoading={generateLoading}
         />
       ) : (
         <SparkLinesListEditor
@@ -283,6 +433,9 @@ function SparkFieldBaselineEditor({
           value={value}
           onChange={onChange}
           disabled={disabled}
+          onGenerate={onGenerate}
+          generateDisabled={generateDisabled}
+          generateLoading={generateLoading}
         />
       )}
     </div>
@@ -293,14 +446,18 @@ function SparkPartsListEditor({
   value,
   onChange,
   disabled,
+  onGenerate,
+  generateDisabled,
+  generateLoading,
 }: {
   value: string;
   onChange: (next: string) => void;
   disabled?: boolean;
+  onGenerate: () => void;
+  generateDisabled?: boolean;
+  generateLoading?: boolean;
 }) {
-  const normalized = normalizeStoredParts(value);
-  const lines =
-    normalized.trim() === "" ? [""] : normalized.split(/\r?\n/);
+  const lines = getPartsEditorLines(value);
   return (
     <div className="stack spark-parts-block">
       <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
@@ -308,7 +465,7 @@ function SparkPartsListEditor({
         Replace, remove, add, or combine lines here.
       </p>
       {lines.map((line, i) => (
-        <div key={i} className="variation-line spark-part-line">
+        <div key={`part-${i}-${lines.length}`} className="variation-line spark-part-line">
           <input
             type="text"
             className="variation-line-input"
@@ -318,7 +475,7 @@ function SparkPartsListEditor({
             onChange={(e) => {
               const next = [...lines];
               next[i] = e.target.value;
-              onChange(joinEditableLines(next));
+              onChange(joinPartsLines(next));
             }}
           />
           <button
@@ -327,21 +484,21 @@ function SparkPartsListEditor({
             disabled={disabled}
             onClick={() => {
               const next = lines.filter((_, j) => j !== i);
-              onChange(next.length ? joinEditableLines(next) : "");
+              onChange(next.length ? joinPartsLines(next) : "");
             }}
           >
             Remove
           </button>
         </div>
       ))}
-      <button
-        type="button"
-        className="btn-add-line"
+      <AddOrGenerateRow
+        addLabel={BASELINE_ADD_LABELS.parts}
         disabled={disabled}
-        onClick={() => onChange(joinEditableLines([...lines, ""]))}
-      >
-        + Add part
-      </button>
+        onAdd={() => onChange(joinPartsLines([...lines, ""]))}
+        onGenerate={onGenerate}
+        generateDisabled={generateDisabled}
+        generateLoading={generateLoading}
+      />
     </div>
   );
 }
@@ -486,21 +643,6 @@ export function SessionJourney({
     }));
   }
 
-  function addLine(element: string) {
-    setVariationDraft((prev) => ({
-      ...prev,
-      [element]: [
-        ...(prev[element] ?? []),
-        {
-          variation_id: newId(),
-          element,
-          text: "",
-          source: "user",
-        },
-      ],
-    }));
-  }
-
   function patchSessionPerspective(pid: string, patch: Partial<Perspective>) {
     setSession((s) => ({
       ...s,
@@ -591,6 +733,9 @@ export function SessionJourney({
     !(session.insights && session.insights.length > 0);
 
   const selectedPerspectives = session.perspectives.filter((p) => p.selected);
+  const promisingPerspectives = session.perspectives.filter(
+    (p) => p.promising,
+  );
 
   function handleRailSelect(key: SparkRailKey) {
     setActiveRail(key);
@@ -672,16 +817,25 @@ export function SessionJourney({
 
       <section className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>1. SPARK breakdown</h2>
-        <p className="muted">
-          Define your lens: Situation, Pieces, Actions, Role, Key goal. Generation
-          runs on the server (
-          {creativeAi === "openai"
-            ? "OpenAI"
-            : creativeAi === "mock"
-              ? "offline templates — add OPENAI_API_KEY for real LLM output"
-              : "checking…"}
-          ).
-        </p>
+        {!session.spark_state ? (
+          <p className="muted">
+            Define your lens: Situation, Pieces, Actions, Role, Key goal. Generation
+            runs on the server (
+            {creativeAi === "openai"
+              ? "OpenAI"
+              : creativeAi === "mock"
+                ? "offline templates — add OPENAI_API_KEY for real LLM output"
+                : "checking…"}
+            ). After generation, this section shows your baseline read-only; edit
+            it in <strong>2. SPARK transformation</strong>.
+          </p>
+        ) : (
+          <p className="muted">
+            Generated baseline (read-only). To change wording, use{" "}
+            <strong>2. SPARK transformation</strong> — the editors there update
+            this baseline for the session.
+          </p>
+        )}
         {creativeAi === "mock" ? (
           <p
             className="muted"
@@ -717,37 +871,10 @@ export function SessionJourney({
           <div className="stack">
             {SPARK_FIELDS.map((f) => (
               <div key={f} data-spark-anchor={f} data-spark-phase="baseline">
-                <label className="label" htmlFor={f === "parts" ? undefined : f}>
-                  {SPARK_LABELS[f]}
-                </label>
-                {f === "parts" ? (
-                  <SparkPartsListEditor
-                    value={sparkEdit.parts ?? ""}
-                    onChange={(next) =>
-                      setSparkEdit((s) => ({ ...s, parts: next }))
-                    }
-                  />
-                ) : (
-                  <textarea
-                    id={f}
-                    rows={f === "situation" || f === "key_goal" ? 4 : 3}
-                    value={sparkEdit[f] ?? ""}
-                    onChange={(e) =>
-                      setSparkEdit((s) => ({ ...s, [f]: e.target.value }))
-                    }
-                  />
-                )}
+                <div className="label">{SPARK_LABELS[f]}</div>
+                <SparkBaselineReadOnly field={f} value={sparkEdit[f] ?? ""} />
               </div>
             ))}
-            <button
-              type="button"
-              disabled={loading !== null}
-              onClick={() =>
-                run("patch", () => patchSpark(sessionId, { ...sparkEdit }))
-              }
-            >
-              {loading === "patch" ? "…" : "Save SPARK edits"}
-            </button>
           </div>
         ) : null}
       </section>
@@ -755,8 +882,9 @@ export function SessionJourney({
       <section className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>2. SPARK transformation</h2>
         <p className="muted">
-          Change perspective per element: for <strong>Situation</strong>, shift
-          context/constraints; for <strong>Pieces</strong>, replace, remove,
+          Edit the SPARK baseline per dimension here (section 1 only shows the
+          generated snapshot). Change perspective: for <strong>Situation</strong>,
+          shift context/constraints; for <strong>Pieces</strong>, replace, remove,
           add, or combine; for <strong>Actions</strong>, reverse, automate, or
           modify; for <strong>Role</strong>, change identity or user type; for{" "}
           <strong>Key goal</strong>, change the objective or metric. Max 6 lines
@@ -775,7 +903,7 @@ export function SessionJourney({
               {loading === "patch" ? "…" : "Save SPARK baseline"}
             </button>
             <span className="muted" style={{ fontSize: "0.85rem" }}>
-              Saves baseline fields (section 1 and step 2) to the server.
+              Saves SPARK baseline from transformation (section 2) to the server.
             </span>
           </div>
         ) : null}
@@ -790,18 +918,6 @@ export function SessionJourney({
             <div className="spark-variation-head">
               <h3 className="spark-variation-title">{SPARK_LABELS[el]}</h3>
               <div className="row spark-variation-actions">
-                <button
-                  type="button"
-                  disabled={loading !== null || !canUseVariations}
-                  title={
-                    canUseVariations
-                      ? "Generate a fresh batch of variation lines for this SPARK dimension."
-                      : "Generate SPARK first (step 1), then you can add variations here."
-                  }
-                  onClick={() => void runGenerateForElement(el)}
-                >
-                  {loading === `var-${el}` ? "…" : "Generate variations"}
-                </button>
                 <button
                   type="button"
                   className="btn-secondary"
@@ -825,6 +941,9 @@ export function SessionJourney({
                   setSparkEdit((s) => ({ ...s, [el]: next }))
                 }
                 disabled={loading !== null}
+                onGenerate={() => void runGenerateForElement(el)}
+                generateDisabled={loading !== null || !canUseVariations}
+                generateLoading={loading === `var-${el}`}
               />
             ) : null}
             <p className="muted" style={{ margin: "0.25rem 0 0.5rem", fontSize: "0.85rem" }}>
@@ -855,13 +974,6 @@ export function SessionJourney({
                 </button>
               </div>
             ))}
-            <button
-              type="button"
-              className="btn-add-line"
-              onClick={() => addLine(el)}
-            >
-              + Add your own line
-            </button>
           </div>
         ))}
       </section>
@@ -1026,8 +1138,8 @@ export function SessionJourney({
           <InsightsTray
             session={session}
             progressPercent={workflowProgressPercent(session.current_step)}
-            nextHint={suggestedNextMove(session)}
             selectedPerspectives={selectedPerspectives}
+            promisingPerspectives={promisingPerspectives}
             insightsLocked={insightsLocked}
             inventionLocked={inventionLocked}
             loading={loading}
