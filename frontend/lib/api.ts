@@ -236,6 +236,7 @@ export async function updatePerspective(
     action_ref?: string | null;
     selected?: boolean;
     promising?: boolean;
+    pool_excluded?: boolean;
   },
 ): Promise<SessionDetail> {
   return api(

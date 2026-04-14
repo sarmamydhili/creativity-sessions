@@ -10,6 +10,64 @@ const TOOL_LABELS: Record<string, string> = {
   user: "Your idea",
 };
 
+function subtypeLabel(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function parseRankScore(
+  value: number | string | null | undefined,
+): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number.parseFloat(String(value));
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(1, n));
+}
+
+function rankPercentLabel(score: number): string {
+  return `${Math.round(score * 100)}%`;
+}
+
+/** Five stars with partial fills; hover shows exact % via native `title`. */
+function RankStars({ score }: { score: number }) {
+  const s = Math.max(0, Math.min(1, score));
+  const pct = rankPercentLabel(s);
+  return (
+    <span
+      className="inline-flex items-center gap-px"
+      title={`${pct} — compared to other ideas in this batch (not a correctness score).`}
+      aria-label={`Rank about ${pct} within this batch`}
+    >
+      {[0, 1, 2, 3, 4].map((i) => {
+        const fill = Math.min(1, Math.max(0, s * 5 - i));
+        return (
+          <span
+            key={i}
+            className="relative inline-block h-[1.05em] w-[0.92em] select-none text-[13px] leading-none sm:text-sm"
+          >
+            <span className="absolute left-0 top-0 text-slate-300" aria-hidden>
+              ★
+            </span>
+            <span
+              className="absolute left-0 top-0 h-full overflow-hidden text-amber-500"
+              style={{ width: `${fill * 100}%` }}
+              aria-hidden
+            >
+              <span className="inline-block whitespace-nowrap">★</span>
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+export type PerspectiveToggleField = "selected" | "promising" | "pool_excluded";
+
 export type PerspectiveCardsProps = {
   perspectives: Perspective[];
   loading: string | null;
@@ -17,11 +75,7 @@ export type PerspectiveCardsProps = {
   /** When true, edits and toggles stay client-side (no Save to server). */
   localMode?: boolean;
   onPatchLocal: (perspectiveId: string, patch: Partial<Perspective>) => void;
-  onToggleField: (
-    p: Perspective,
-    field: "selected" | "promising",
-    value: boolean,
-  ) => void;
+  onToggleField: (p: Perspective, field: PerspectiveToggleField, value: boolean) => void;
   onSaveText: (perspectiveId: string) => void;
   onRemove: (p: Perspective) => void;
 };
@@ -52,113 +106,193 @@ export function PerspectiveCards({
           : "flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 md:grid md:grid-cols-1 md:gap-4 md:overflow-visible md:pb-0 [-webkit-overflow-scrolling:touch] lg:grid-cols-2 xl:grid-cols-3"
       }
     >
-      {perspectives.map((p, idx) => (
-        <article
-          key={p.perspective_id}
-          className="perspective-card flex min-w-[min(100%,22rem)] shrink-0 snap-center flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-card max-md:snap-center md:min-w-0 md:w-full md:shrink md:snap-none"
-        >
-          <div className="perspective-card-top flex flex-wrap items-center gap-2">
-            <span className="perspective-badge rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-spark-situation">
-              Idea {idx + 1}
-            </span>
-            <span className="perspective-badge subtle rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-              {TOOL_LABELS[p.source_tool] ?? p.source_tool}
-            </span>
-          </div>
-          <div className="perspective-card-body flex min-w-0 flex-col gap-2">
-            {p.title ? (
-              <p className="text-sm font-semibold text-slate-900">{p.title}</p>
+      {perspectives.map((p, idx) => {
+        const rank = parseRankScore(p.rank_score);
+        const excluded = Boolean(p.pool_excluded);
+        const promising = Boolean(p.promising);
+        const busy = loading !== null;
+
+        const shell =
+          "perspective-card relative flex min-w-[min(100%,22rem)] shrink-0 snap-center flex-col gap-3 rounded-2xl border p-4 pt-3 shadow-card max-md:snap-center md:min-w-0 md:w-full md:shrink md:snap-none transition-colors " +
+          (excluded
+            ? "border-dashed border-slate-400/80 bg-slate-200/50 text-slate-600"
+            : promising
+              ? "border-amber-200 bg-amber-50/50 ring-2 ring-amber-300/50"
+              : "border-slate-200 bg-white");
+
+        return (
+          <article key={p.perspective_id} className={shell}>
+            <div className="absolute right-2 top-2 z-10 flex flex-col items-center gap-0.5">
+              <button
+                type="button"
+                disabled={busy || excluded}
+                aria-pressed={promising}
+                aria-label={promising ? "Clear promising" : "Mark as promising"}
+                title={
+                  excluded
+                    ? "Include in pool again to mark promising"
+                    : promising
+                      ? "Promising — click to clear"
+                      : "Mark as promising"
+                }
+                className={
+                  "flex h-9 w-9 items-center justify-center rounded-lg text-lg leading-none transition " +
+                  (excluded
+                    ? "cursor-not-allowed text-slate-300"
+                    : promising
+                      ? "bg-amber-100 text-amber-600 shadow-sm hover:bg-amber-200"
+                      : "text-slate-400 hover:bg-amber-50/80 hover:text-amber-500")
+                }
+                onClick={() =>
+                  void onToggleField(p, "promising", !promising)
+                }
+              >
+                ★
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={excluded}
+                aria-label={
+                  excluded ? "Include in pool" : "Set aside — not in pool"
+                }
+                title={
+                  excluded
+                    ? "Include in pool again"
+                    : "Not in pool — set aside (click + to bring back later)"
+                }
+                className={
+                  "flex h-9 w-9 items-center justify-center rounded-lg text-base font-semibold leading-none transition " +
+                  (excluded
+                    ? "border border-emerald-500/60 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                    : "border border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:bg-red-50 hover:text-red-600")
+                }
+                onClick={() =>
+                  void onToggleField(p, "pool_excluded", !excluded)
+                }
+              >
+                {excluded ? "+" : "×"}
+              </button>
+            </div>
+
+            {excluded ? (
+              <p className="m-0 pr-11 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                Not in pool
+              </p>
             ) : null}
-            <label
-              className="label text-xs text-slate-500"
-              htmlFor={`pt-${p.perspective_id}`}
-            >
-              What could this mean for your problem?
-            </label>
-            <textarea
-              id={`pt-${p.perspective_id}`}
-              rows={4}
-              className="perspective-body-input min-h-[6.5rem] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
-              value={p.text || p.description || ""}
-              onChange={(e) =>
-                onPatchLocal(p.perspective_id, {
-                  text: e.target.value,
-                  description: e.target.value,
-                })
-              }
-              placeholder="Write a short angle or reframing…"
-            />
-          </div>
-          {(p.part_ref || p.action_ref) && p.source_tool !== "user" ? (
-            <div
-              className="perspective-chips flex flex-col gap-2"
-              aria-label="Source references"
-            >
-              {p.part_ref ? (
-                <span className="chip inline-block max-w-full rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600 break-words">
-                  <strong className="text-slate-800">Piece:</strong> {p.part_ref}
+
+            <div className="perspective-card-top flex flex-wrap items-center gap-2 pr-10">
+              <span className="perspective-badge rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-spark-situation">
+                Idea {idx + 1}
+              </span>
+              <span className="perspective-badge subtle rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                {TOOL_LABELS[p.source_tool] ?? p.source_tool}
+              </span>
+              {p.subtype ? (
+                <span
+                  className="perspective-badge subtle rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600"
+                  title="Cognitive subtype"
+                >
+                  {subtypeLabel(p.subtype)}
                 </span>
               ) : null}
-              {p.action_ref ? (
-                <span className="chip inline-block max-w-full rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600 break-words">
-                  <strong className="text-slate-800">Action:</strong>{" "}
-                  {p.action_ref}
+              {rank != null ? (
+                <span className="perspective-badge subtle inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50/90 px-2 py-0.5 text-xs font-medium text-emerald-900">
+                  <RankStars score={rank} />
                 </span>
               ) : null}
             </div>
-          ) : null}
-          <div className="perspective-card-controls flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm">
-            <label className="perspective-check flex cursor-pointer gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={p.selected}
-                disabled={loading !== null}
-                onChange={(e) =>
-                  void onToggleField(p, "selected", e.target.checked)
-                }
-              />
-              <span className="text-slate-700">
-                {localMode
-                  ? "Select to keep when you continue"
-                  : "Use when generating insights"}
-              </span>
-            </label>
-            <label className="perspective-check flex cursor-pointer gap-2">
-              <input
-                type="checkbox"
-                className="mt-0.5"
-                checked={p.promising ?? false}
-                disabled={loading !== null}
-                onChange={(e) =>
-                  void onToggleField(p, "promising", e.target.checked)
-                }
-              />
-              <span className="text-slate-700">Promising</span>
-            </label>
-          </div>
-          <div className="perspective-card-actions flex flex-wrap gap-2 border-t border-slate-100 pt-2">
-            {!localMode ? (
-              <button
-                type="button"
-                className="rounded-xl bg-spark-situation px-3 py-2 text-sm font-medium text-white disabled:opacity-45"
-                disabled={loading !== null}
-                onClick={() => void onSaveText(p.perspective_id)}
+            <div className="perspective-card-body flex min-w-0 flex-col gap-2">
+              {p.title ? (
+                <p
+                  className={
+                    "text-sm font-semibold " +
+                    (excluded ? "text-slate-600" : "text-slate-900")
+                  }
+                >
+                  {p.title}
+                </p>
+              ) : null}
+              <label
+                className="label text-xs text-slate-500"
+                htmlFor={`pt-${p.perspective_id}`}
               >
-                Save text
-              </button>
+                What could this mean for your problem?
+              </label>
+              <textarea
+                id={`pt-${p.perspective_id}`}
+                rows={4}
+                className="perspective-body-input min-h-[6.5rem] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60"
+                disabled={busy}
+                value={p.text || p.description || ""}
+                onChange={(e) =>
+                  onPatchLocal(p.perspective_id, {
+                    text: e.target.value,
+                    description: e.target.value,
+                  })
+                }
+                placeholder="Write a short angle or reframing…"
+              />
+            </div>
+            {(p.part_ref || p.action_ref) && p.source_tool !== "user" ? (
+              <div
+                className="perspective-chips flex flex-col gap-2"
+                aria-label="Source references"
+              >
+                {p.part_ref ? (
+                  <span className="chip inline-block max-w-full rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600 break-words">
+                    <strong className="text-slate-800">Piece:</strong> {p.part_ref}
+                  </span>
+                ) : null}
+                {p.action_ref ? (
+                  <span className="chip inline-block max-w-full rounded-lg bg-slate-100 px-2 py-1 text-xs text-slate-600 break-words">
+                    <strong className="text-slate-800">Action:</strong>{" "}
+                    {p.action_ref}
+                  </span>
+                ) : null}
+              </div>
             ) : null}
-            <button
-              type="button"
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-              disabled={loading !== null}
-              onClick={() => void onRemove(p)}
-            >
-              {localMode ? "Remove from pool" : "Delete"}
-            </button>
-          </div>
-        </article>
-      ))}
+            <div className="perspective-card-controls flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm">
+              <label className="perspective-check flex cursor-pointer gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={p.selected}
+                  disabled={busy || excluded}
+                  onChange={(e) =>
+                    void onToggleField(p, "selected", e.target.checked)
+                  }
+                />
+                <span className={excluded ? "text-slate-500" : "text-slate-700"}>
+                  {localMode
+                    ? "Use for insights after you save this pool"
+                    : "Use when generating insights"}
+                </span>
+              </label>
+            </div>
+            {!localMode ? (
+              <div className="perspective-card-actions flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+                <button
+                  type="button"
+                  className="rounded-xl bg-spark-situation px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 hover:text-white disabled:opacity-45"
+                  disabled={busy}
+                  onClick={() => void onSaveText(p.perspective_id)}
+                >
+                  Save text
+                </button>
+                <button
+                  type="button"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-red-700 shadow-sm hover:border-red-200 hover:bg-red-50 hover:text-red-800"
+                  disabled={busy}
+                  onClick={() => void onRemove(p)}
+                >
+                  Delete
+                </button>
+              </div>
+            ) : null}
+          </article>
+        );
+      })}
     </div>
   );
 }

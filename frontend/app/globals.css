@@ -354,9 +354,11 @@
     border-top: 1px solid var(--border);
   }
 
+  /* Base layer styles all buttons with blue bg; card actions use Tailwind colors — reset bg here. */
   .perspective-card-actions button {
     font-size: 0.875rem;
     padding: 0.4rem 0.75rem;
+    background-color: transparent;
   }
 
   .history-details summary.history-summary {

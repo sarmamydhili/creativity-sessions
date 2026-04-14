@@ -710,18 +710,22 @@ export function SessionJourney({
 
   async function togglePerspectiveField(
     p: Perspective,
-    field: "selected" | "promising",
+    field: "selected" | "promising" | "pool_excluded",
     value: boolean,
   ) {
+    const patch: Partial<Perspective> = { [field]: value };
+    if (field === "pool_excluded" && value === true) {
+      patch.selected = false;
+    }
     if (explorationActive) {
-      patchSessionPerspective(p.perspective_id, { [field]: value });
+      patchSessionPerspective(p.perspective_id, patch);
       return;
     }
     setErr(null);
     setLoading(`pt-${p.perspective_id}-${field}`);
     try {
       const s = await updatePerspective(sessionId, p.perspective_id, {
-        [field]: value,
+        ...patch,
       });
       setSession(s);
     } catch (e) {
@@ -764,6 +768,7 @@ export function SessionJourney({
           spark_element: "parts",
           selected: false,
           promising: false,
+          pool_excluded: false,
         },
       ]);
       return;
@@ -800,13 +805,12 @@ export function SessionJourney({
   }
 
   async function runCommitPerspectives() {
-    const chosen = perspectivePool.filter((p) => p.selected);
-    if (chosen.length === 0) return;
+    if (perspectivePool.length === 0) return;
     setErr(null);
     setLoading("persp-commit");
     try {
       const s = await commitPerspectives(sessionId, {
-        perspectives: chosen,
+        perspectives: perspectivePool,
         perspective_pool: poolSettings,
       });
       setSession(s);
@@ -851,6 +855,8 @@ export function SessionJourney({
     return out.map(({ p }) => p);
   }, [perspectivePool, poolSearch, poolSort, poolSelectedOnly]);
 
+  const perspectivesInPool = session.perspectives.filter((p) => !p.pool_excluded);
+
   /** Perspectives use SPARK pieces/actions (saved variations optional). */
   const perspectivesAiLocked = session.current_step === "session_created";
 
@@ -858,12 +864,12 @@ export function SessionJourney({
 
   const canUseVariations = session.current_step !== "session_created";
 
-  /** Match backend generate_insights: if no card is “selected”, all perspectives are still used. */
+  /** Match backend generate_insights: if none selected, top 10 in-pool by rank_score are used. */
   const insightsLocked =
     loading !== null ||
     session.current_step === "session_created" ||
     explorationActive ||
-    session.perspectives.length === 0;
+    perspectivesInPool.length === 0;
 
   /** Enable whenever we have saved insights to build from (same gate as backend insight_texts). */
   const inventionLocked =
@@ -887,19 +893,12 @@ export function SessionJourney({
     (v || b)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function jumpToInvention() {
-    document.getElementById("invention-builder")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
-
   const selectedForTray = explorationActive
     ? []
-    : session.perspectives.filter((p) => p.selected);
+    : perspectivesInPool.filter((p) => p.selected);
   const promisingForTray = explorationActive
     ? []
-    : session.perspectives.filter((p) => p.promising);
+    : perspectivesInPool.filter((p) => p.promising);
 
   const mainColumn = (
     <div className="stack journey-main-col">
@@ -1262,6 +1261,23 @@ export function SessionJourney({
           </label>
         </div>
 
+        <div
+          className="rank-help mt-4 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5 text-xs leading-relaxed text-slate-700"
+          role="note"
+        >
+          <p className="m-0">
+            <strong className="text-slate-900">About Rank</strong> — After you generate
+            a pool, each card can show <strong>Rank</strong> as filled stars (★). It
+            only compares ideas <em>in that batch</em>: how well the text lines up with
+            your problem and SPARK, how well it fits the boldness / novelty / goal you
+            picked, plus a little boost for variety.{" "}
+            <span className="text-slate-600">
+              Hover the stars to see the exact percentage. Use it to spot stronger
+              angles first; it is not a grade out of 100 for “correctness.”
+            </span>
+          </p>
+        </div>
+
         <div className="mt-4 min-h-0 flex-1">
           <PerspectiveCards
             perspectives={displayedPerspectives}
@@ -1278,21 +1294,49 @@ export function SessionJourney({
           <button
             type="button"
             className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-slate-800 disabled:opacity-45 sm:w-auto sm:min-w-[280px]"
-            disabled={
-              loading !== null ||
-              perspectivePool.filter((p) => p.selected).length === 0
-            }
+            disabled={loading !== null || perspectivePool.length === 0}
             onClick={() => void runCommitPerspectives()}
           >
             {loading === "persp-commit"
               ? "…"
-              : "Continue with Selected Perspectives"}
+              : "Save pool to session"}
           </button>
           <p className="muted mt-2 text-xs">
-            Saves only checked cards to the session and unlocks insights. Select at
-            least one card.
+            Saves every card in your draft with its flags (× not in pool, ★ promising,
+            checkbox for insights). Re-open the session to see the same layout. Use
+            checkboxes so insights know which angles to prioritize (if none checked,
+            the top 10 by rank are used).
           </p>
         </div>
+      </section>
+
+      <section
+        id="insights-generate"
+        className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
+      >
+        <h2 className="text-lg font-semibold text-slate-900">Insights</h2>
+        <p className="muted text-sm text-slate-600">
+          Synthesize from checked perspectives. If none are checked, the server uses
+          the <strong>top 10</strong> in-pool cards by rank. Run this before you build
+          an invention.
+        </p>
+        <button
+          type="button"
+          className="mt-3 w-full max-w-xs rounded-xl bg-spark-situation py-2.5 text-sm font-semibold text-white shadow-soft disabled:opacity-45 sm:w-auto sm:px-6"
+          disabled={insightsLocked}
+          title={
+            explorationActive
+              ? "Save your draft pool in the perspective workspace first."
+              : insightsLocked && session.perspectives.length === 0
+                ? "Add perspectives first."
+                : insightsLocked && perspectivesInPool.length === 0
+                  ? "Clear “not in pool” on at least one card, or add perspectives."
+                  : "Synthesize from selected perspectives, or top 10 by rank if none checked."
+          }
+          onClick={() => run("ins", () => generateInsights(sessionId))}
+        >
+          {loading === "ins" ? "…" : "Generate insights"}
+        </button>
       </section>
 
       <InventionBuilder
@@ -1329,20 +1373,6 @@ export function SessionJourney({
             selectedPerspectives={selectedForTray}
             promisingPerspectives={promisingForTray}
             perspectiveDraftActive={explorationActive}
-            insightsLocked={insightsLocked}
-            inventionLocked={inventionLocked}
-            inventionLockTitle={inventionLockTitle}
-            loading={loading}
-            onGenerateInsights={() =>
-              run("ins", () => generateInsights(sessionId))
-            }
-            onGenerateInvention={() =>
-              run("inv", () => generateInvention(sessionId))
-            }
-            onGenerateEnlightenment={() =>
-              run("enl", () => generateEnlightenment(sessionId))
-            }
-            onJumpToInvention={jumpToInvention}
           />
         }
         footer={

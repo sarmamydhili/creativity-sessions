@@ -97,7 +97,9 @@ function TierFader({
               disabled={disabled}
               onClick={() => onChange(o)}
               className={`min-w-0 flex-1 rounded-lg px-1 py-1.5 text-[10px] font-medium leading-tight transition sm:text-[11px] ${
-                value === o ? chipActive : "text-slate-500 hover:bg-white/60 hover:text-slate-800"
+                value === o
+                  ? chipActive
+                  : "bg-transparent text-slate-800 hover:bg-white/90 hover:text-slate-950"
               }`}
             >
               {tierLabel(o)}

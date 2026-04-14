@@ -41,11 +41,17 @@ export interface Perspective {
   goal_priority_alignment?: string | null;
   iteration?: number;
   source_tool: string;
+  /** Cognitive subtype within source_tool (unified pool generation). */
+  subtype?: string | null;
+  /** Deterministic post-LLM ranking score (0–1 scale). */
+  rank_score?: number | null;
   spark_element: string;
   part_ref?: string | null;
   action_ref?: string | null;
   selected: boolean;
   promising?: boolean;
+  /** Marked “not in pool” — muted on card; toggled off to include again; persisted. */
+  pool_excluded?: boolean;
 }
 
 /** Unified perspective pool controls (single GenAI call, all four cognitive tools). */
@@ -89,6 +95,12 @@ export interface InsightRecord {
   insight_id: string;
   iteration: number;
   text: string;
+  /** Optional: why this insight matters for invention work */
+  why_it_matters?: string | null;
+  source_perspective_ids?: string[];
+  source_tools?: string[];
+  source_spark_elements?: string[];
+  theme_label?: string | null;
 }
 
 export interface InventionArtifact {

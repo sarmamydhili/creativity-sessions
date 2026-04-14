@@ -37,9 +37,12 @@ from app.models.perspective_pool import (
     PerspectivePoolSettings,
 )
 from app.repositories.session_repository import SessionRepository
+from app.services import insight_synthesis
+from app.services.perspective_service import finalize_perspective_pool
 from app.services.session_service import (
     SessionService,
     _normalize_doc,
+    _parse_perspective,
     _parse_variations_from_raw,
 )
 
@@ -415,13 +418,25 @@ class CreativeWorkflowService:
             goal_priority=req.goal_priority,
             max_perspectives=num,
         )
+        ranked_new = finalize_perspective_pool(
+            raw_new,
+            problem_statement=d["problem_statement"],
+            spark=spark,
+            settings=settings,
+            rebalance_k=min(12, max(4, num)),
+        )
+        recommended = (
+            (ranked_new[0].title or ranked_new[0].text or "").strip()
+            if ranked_new
+            else recommended
+        )
         mode = "perspective_pool"
         hist_payload: dict[str, Any] = {
             "mode": mode,
             "perspective_pool": settings.model_dump(),
             "recommended_perspective": recommended,
             "insight_candidates": insight_cands,
-            "count": len(raw_new),
+            "count": len(ranked_new),
         }
         set_extra: dict[str, Any] = {
             "last_perspective_pool": settings.model_dump(),
@@ -429,7 +444,7 @@ class CreativeWorkflowService:
             "last_insight_candidates": insight_cands,
         }
         iter_for_cards = cur_iter if req.preview_only else next_iter
-        new_ps = [p.model_copy(update={"iteration": iter_for_cards}) for p in raw_new]
+        new_ps = [p.model_copy(update={"iteration": iter_for_cards}) for p in ranked_new]
 
         if req.preview_only:
             return PerspectivesGenerateResponse(
@@ -490,7 +505,7 @@ class CreativeWorkflowService:
         normalized: list[Perspective] = []
         for p in req.perspectives:
             normalized.append(
-                p.model_copy(update={"iteration": next_iter, "selected": True}),
+                p.model_copy(update={"iteration": next_iter}),
             )
         hist_payload: dict[str, Any] = {
             "mode": "commit",
@@ -611,6 +626,8 @@ class CreativeWorkflowService:
                 merged["selected"] = bool(data["selected"])
             if "promising" in data:
                 merged["promising"] = bool(data["promising"])
+            if "pool_excluded" in data:
+                merged["pool_excluded"] = bool(data["pool_excluded"])
             updated.append(merged)
         if not found:
             raise HTTPException(
@@ -706,20 +723,69 @@ class CreativeWorkflowService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Add at least one perspective (Generate more AI, or add your own card) before insights.",
             )
-        selected = [p for p in perspectives if p.selected]
-        use = selected if selected else perspectives
+        in_pool = [p for p in perspectives if not p.pool_excluded]
+        if not in_pool:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one perspective must be in the pool (clear “not in pool” on a card) before insights.",
+            )
+        selected = [p for p in in_pool if p.selected]
+        if selected:
+            use = selected
+        else:
+            use = _top_in_pool_perspectives_for_insights(in_pool, limit=10)
+        validated = insight_synthesis.validate_insight_perspectives(use)
+        if not validated:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected perspectives must include at least one non-empty card with a valid id.",
+            )
+        normalized = insight_synthesis.normalize_perspectives(validated)
+        themes = insight_synthesis.build_theme_groups(normalized)
+        problem_statement = str(d.get("problem_statement") or "")
         spark = SparkState(
             **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
         )
-        insight_texts = await self._provider.insights_from_perspectives(
+        raw_insight_dicts = await self._provider.insights_from_perspectives(
             spark=spark,
-            perspectives=use,
+            perspectives=normalized,
+            problem_statement=problem_statement,
+            theme_groups=themes,
         )
+        finalized = insight_synthesis.finalize_insight_drafts_with_problem(
+            raw_insight_dicts,
+            problem_statement=problem_statement,
+            themes=themes,
+            normalized_perspectives=normalized,
+        )
+        if not finalized:
+            finalized = insight_synthesis.salvage_if_all_filtered(
+                raw_insight_dicts,
+                themes=themes,
+                normalized_perspectives=normalized,
+            )
         next_iter = int(d.get("current_iteration", 1)) + 1
-        insight_records = [
-            InsightRecord(insight_id=str(uuid4()), iteration=next_iter, text=t)
-            for t in insight_texts
-        ]
+        insight_records: list[InsightRecord] = []
+        for fd in finalized:
+            why = str(fd.get("why_it_matters") or "").strip()
+            tl = str(fd.get("theme_label") or "").strip()
+            insight_records.append(
+                InsightRecord(
+                    insight_id=str(uuid4()),
+                    iteration=next_iter,
+                    text=str(fd.get("text", "")),
+                    why_it_matters=why or None,
+                    source_perspective_ids=list(fd.get("source_perspective_ids") or []),
+                    source_tools=list(fd.get("source_tools") or []),
+                    source_spark_elements=list(fd.get("source_spark_elements") or []),
+                    theme_label=tl or None,
+                )
+            )
+        if not insight_records:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Insight generation returned no usable statements. Try again or adjust perspectives.",
+            )
         stored = [ir.model_dump(mode="python") for ir in insight_records]
         hist = self._hist(HistoryEventKind.insights_generated, {"count": len(stored)})
         out = await self._repo.append_history_and_set(
@@ -811,25 +877,37 @@ class CreativeWorkflowService:
         return EnlightenmentGenerateResponse(session=self._sessions.to_detail(out), enlightenment=en)
 
 
+def _top_in_pool_perspectives_for_insights(
+    in_pool: list[Perspective],
+    *,
+    limit: int = 10,
+) -> list[Perspective]:
+    """
+    When no cards are selected for insights, use up to *limit* perspectives
+    ranked by rank_score (highest first), stable tie-break by perspective_id.
+    Cards without rank_score sort last among equals.
+    """
+    if not in_pool or limit <= 0:
+        return []
+
+    def sort_key(p: Perspective) -> tuple[float, str]:
+        rs = p.rank_score
+        if rs is None:
+            return (float("-inf"), p.perspective_id)
+        try:
+            return (float(rs), p.perspective_id)
+        except (TypeError, ValueError):
+            return (float("-inf"), p.perspective_id)
+
+    ranked = sorted(in_pool, key=sort_key, reverse=True)
+    return ranked[: min(limit, len(ranked))]
+
+
 def _load_perspectives(d: dict[str, Any]) -> list[Perspective]:
     out: list[Perspective] = []
     for p in d.get("perspectives") or []:
         if isinstance(p, dict):
-            desc = p.get("description") or p.get("text") or ""
-            out.append(
-                Perspective(
-                    perspective_id=p.get("perspective_id", str(uuid4())),
-                    description=desc,
-                    text=desc,
-                    iteration=int(p.get("iteration", 1)),
-                    source_tool=p.get("source_tool", ""),
-                    spark_element=p.get("spark_element", ""),
-                    part_ref=p.get("part_ref"),
-                    action_ref=p.get("action_ref"),
-                    selected=bool(p.get("selected", False)),
-                    promising=bool(p.get("promising", False)),
-                )
-            )
+            out.append(_parse_perspective(p))
     return out
 
 

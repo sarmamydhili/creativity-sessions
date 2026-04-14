@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+
+from app.ai.prompts import templates as prompt_templates
 from app.models.perspective_pool import (
     BoldnessLevel,
     GoalPriorityPool,
     NoveltyLevel,
 )
 from app.models.session import SparkState
+from app.services.perspective_pool_allocation import build_allocation_slots
 
 
 def _boldness_word(b: BoldnessLevel) -> str:
@@ -31,45 +35,22 @@ def build_perspective_pool_user_prompt(
     goal_priority: GoalPriorityPool,
     max_perspectives: int,
 ) -> str:
-    """Exact structure requested for the LLM user message."""
-    per_tool = max_perspectives // 4
-    remainder = max_perspectives % 4
-    dist_note = (
-        f"Target exactly {max_perspectives} perspectives total. "
-        f"Use approximately {per_tool} per tool; if remainder is {remainder}, "
-        "add one extra each to the first tools in order: analogy, recategorization, combination, association."
+    """Single user message: SPARK + levers + subtype catalog + few-shot + allocation JSON."""
+    cap = max(1, min(max_perspectives, 32))
+    slots = build_allocation_slots(cap)
+    allocation_json = json.dumps(slots, ensure_ascii=False, indent=2)
+    return prompt_templates.PERSPECTIVE_POOL_USER_TEMPLATE.substitute(
+        problem_statement=problem_statement.strip(),
+        situation=spark.situation.strip(),
+        parts=spark.parts.strip(),
+        actions=spark.actions.strip(),
+        role=spark.role.strip(),
+        key_goal=spark.key_goal.strip(),
+        boldness=_boldness_word(boldness),
+        novelty=_novelty_word(novelty),
+        goal_priority=_goal_words(goal_priority),
+        max_perspectives=str(cap),
+        subtype_reference=prompt_templates.PERSPECTIVE_POOL_SUBTYPE_REFERENCE,
+        few_shot_examples=prompt_templates.PERSPECTIVE_POOL_FEW_SHOT_EXAMPLES_JSON,
+        allocation_json=allocation_json,
     )
-    return f"""Problem Statement:
-{problem_statement.strip()}
-
-SPARK State:
-Situation: {spark.situation.strip()}
-Parts: {spark.parts.strip()}
-Actions: {spark.actions.strip()}
-Role: {spark.role.strip()}
-Key Goal: {spark.key_goal.strip()}
-
-Boldness:
-{_boldness_word(boldness)}
-
-Novelty:
-{_novelty_word(novelty)}
-
-Goal Priority:
-{_goal_words(goal_priority)}
-
-Maximum Perspectives:
-{max_perspectives}
-
-Instructions:
-Generate a balanced pool of perspectives across all four cognitive tools.
-
-Requirements:
-- distribute perspectives across analogy, re-categorization, combination, and association
-- each perspective must clearly reflect its tool
-- avoid duplicates
-- make outputs distinct and useful
-- align all ideas to boldness, novelty, and goal priority
-- {dist_note}
-
-Return valid JSON only with key "perspectives" as specified in the system message."""

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from app.models.creative_levers import CreativeLevers
 from app.models.perspective_pool import (
@@ -83,7 +84,13 @@ class CreativeProvider(ABC):
         *,
         spark: SparkState,
         perspectives: list[Perspective],
-    ) -> list[str]:
+        problem_statement: str = "",
+        theme_groups: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Return structured insight drafts: text, why_it_matters, theme_index,
+        source_perspective_ids (validated downstream).
+        """
         raise NotImplementedError
 
     @abstractmethod

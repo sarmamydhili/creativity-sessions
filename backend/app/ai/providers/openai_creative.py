@@ -25,6 +25,10 @@ from app.services.creative_lever_prompt_builder import (
     build_lever_system_prompt,
     build_lever_user_prompt,
 )
+from app.services.perspective_pool_allocation import (
+    SUBTYPES_BY_TOOL,
+    build_allocation_slots,
+)
 from app.services.perspective_pool_prompt import build_perspective_pool_user_prompt
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
@@ -61,6 +65,28 @@ def _normalize_pool_spark_element(raw: str) -> str:
     if t in ("situation", "parts", "actions", "role", "key_goal"):
         return t
     return "parts"
+
+
+def _normalize_pool_subtype(tool: str, raw: str | None) -> str | None:
+    t = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if not t:
+        return None
+    allowed = SUBTYPES_BY_TOOL.get(tool, ())
+    if t in allowed:
+        return t
+    # tolerate minor variants
+    for a in allowed:
+        if t.replace("_", "") == a.replace("_", ""):
+            return a
+    return None
+
+
+def _align_pool_row(p: Perspective, slot: dict[str, str]) -> Perspective:
+    tool = slot["tool"]
+    allowed = SUBTYPES_BY_TOOL.get(tool, ())
+    model_subtype = _normalize_pool_subtype(tool, getattr(p, "subtype", None))
+    subtype = model_subtype if model_subtype in allowed else slot["subtype"]
+    return p.model_copy(update={"source_tool": tool, "subtype": subtype})
 
 
 def _perspective_from_pool_item(it: dict[str, Any]) -> Perspective | None:
@@ -307,6 +333,8 @@ class OpenAICreativeProvider(CreativeProvider):
         max_perspectives: int,
     ) -> tuple[list[Perspective], str | None, list[str]]:
         system = prompt_templates.PERSPECTIVE_POOL_SYSTEM
+        cap = max(1, min(max_perspectives, 32))
+        slots = build_allocation_slots(cap)
         user = build_perspective_pool_user_prompt(
             problem_statement=problem_statement,
             spark=spark,
@@ -324,8 +352,8 @@ class OpenAICreativeProvider(CreativeProvider):
             p = _perspective_from_pool_item(it) if isinstance(it, dict) else None
             if p is not None:
                 out.append(p)
-        cap = max(1, min(max_perspectives, 32))
-        out = out[:cap]
+        out = out[: len(slots)]
+        out = [_align_pool_row(p, slots[i]) for i, p in enumerate(out) if i < len(slots)]
         rec: str | None = None
         if out:
             rec = (out[0].title or out[0].text or "").strip() or None
@@ -345,20 +373,62 @@ class OpenAICreativeProvider(CreativeProvider):
         *,
         spark: SparkState,
         perspectives: list[Perspective],
-    ) -> list[str]:
+        problem_statement: str = "",
+        theme_groups: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         system = prompt_templates.INSIGHTS_SYSTEM
+        themes = theme_groups or []
         user = json.dumps(
             {
+                "problem_statement": problem_statement,
                 "spark": spark.model_dump(),
-                "perspectives": [p.model_dump() for p in perspectives],
+                "themes": themes,
+                "perspectives_reference": [p.model_dump() for p in perspectives],
             },
             ensure_ascii=False,
         )
-        raw = await self._chat_json(system=system, user=user)
+        raw = await self._chat_json(system=system, user=user, temperature=0.55)
         ins = raw.get("insights")
         if not isinstance(ins, list):
             return []
-        return [str(x).strip() for x in ins if str(x).strip()]
+        out: list[dict[str, Any]] = []
+        for item in ins:
+            if isinstance(item, str):
+                t = str(item).strip()
+                if t:
+                    out.append(
+                        {
+                            "text": t,
+                            "why_it_matters": "",
+                            "theme_index": 0,
+                            "source_perspective_ids": [],
+                        }
+                    )
+                continue
+            if not isinstance(item, dict):
+                continue
+            text = str(item.get("text", "")).strip()
+            if not text:
+                continue
+            sip = item.get("source_perspective_ids")
+            if not isinstance(sip, list):
+                sip = []
+            ti = item.get("theme_index", 0)
+            try:
+                theme_index = int(ti)
+            except (TypeError, ValueError):
+                theme_index = 0
+            tl = str(item.get("theme_label", "")).strip()
+            out.append(
+                {
+                    "text": text,
+                    "why_it_matters": str(item.get("why_it_matters", "")).strip(),
+                    "theme_index": theme_index,
+                    "source_perspective_ids": [str(x).strip() for x in sip if str(x).strip()],
+                    "theme_label": tl or None,
+                }
+            )
+        return out
 
     async def invention_from_insights(
         self,

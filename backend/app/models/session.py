@@ -107,6 +107,10 @@ class Perspective(BaseModel):
     action_ref: str | None = None
     selected: bool = False
     promising: bool = False
+    pool_excluded: bool = Field(
+        default=False,
+        description="User marked not in consideration for this pool; persisted with session.",
+    )
     title: str | None = None
     why_interesting: str | None = Field(
         None,
@@ -115,6 +119,14 @@ class Perspective(BaseModel):
     boldness_level: str | None = None
     novelty_level: str | None = None
     goal_priority_alignment: str | None = None
+    subtype: str | None = Field(
+        None,
+        description="Cognitive subtype within source_tool (pool generation).",
+    )
+    rank_score: float | None = Field(
+        None,
+        description="Post-LLM deterministic ranking score (not from the model).",
+    )
 
     @model_validator(mode="after")
     def _sync_text_description(self) -> Perspective:
@@ -131,6 +143,17 @@ class InsightRecord(BaseModel):
     insight_id: str = Field(default_factory=lambda: str(uuid4()))
     iteration: int = 1
     text: str = ""
+    why_it_matters: str | None = Field(
+        None,
+        description="Why the insight matters for downstream invention work.",
+    )
+    source_perspective_ids: list[str] = Field(default_factory=list)
+    source_tools: list[str] = Field(default_factory=list)
+    source_spark_elements: list[str] = Field(default_factory=list)
+    theme_label: str | None = Field(
+        None,
+        description="Optional synthesis theme this insight was anchored to.",
+    )
 
 
 class InventionArtifact(BaseModel):
@@ -321,6 +344,7 @@ class PerspectiveUpdateRequest(BaseModel):
     action_ref: str | None = Field(None, max_length=2000)
     selected: bool | None = None
     promising: bool | None = None
+    pool_excluded: bool | None = None
 
 
 class PerspectiveCreateRequest(BaseModel):

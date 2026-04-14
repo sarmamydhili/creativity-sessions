@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import itertools
 import re
+from typing import Any
 from uuid import uuid4
 
 from app.ai.providers.creative_base import CreativeProvider
@@ -18,6 +19,7 @@ from app.models.session import (
     SparkState,
 )
 from app.services.creative_lever_prompt_builder import resolve_spark_target_text
+from app.services.perspective_pool_allocation import build_allocation_slots
 
 
 def _clip(text: str, max_len: int) -> str:
@@ -375,21 +377,23 @@ class CreativeMockProvider(CreativeProvider):
         goal_priority: GoalPriorityPool,
         max_perspectives: int,
     ) -> tuple[list[Perspective], str | None, list[str]]:
-        tools = ["analogy", "recategorization", "combination", "association"]
         els = ["situation", "parts", "actions", "role", "key_goal"]
         ps = _clip((problem_statement or "").strip(), 140) or "the problem"
         n = max(1, min(max_perspectives, 32))
+        slots = build_allocation_slots(n)
         out: list[Perspective] = []
         gp = goal_priority.value.replace("_", " ")
-        for i in range(n):
-            tool = tools[i % 4]
-            el = els[i % 5]
-            title = f"{tool.replace('recategorization', 'Re-categorization').title()} · {i + 1}"
+        for i, slot in enumerate(slots):
+            tool = slot["tool"]
+            subtype = slot["subtype"]
+            el = els[i % len(els)]
+            tlabel = tool.replace("recategorization", "Re-categorization").title()
+            title = f"{tlabel} · {subtype.replace('_', ' ').title()}"
             desc = (
-                f"[{tool} | boldness={boldness.value} | novelty={novelty.value} | {gp}] "
-                f"Apply {tool} to «{ps}» via SPARK dimension «{el}»."
+                f"[{tool} · {subtype} | boldness={boldness.value} | novelty={novelty.value} | {gp}] "
+                f"Mock angle on «{ps}» using SPARK «{el}»."
             )
-            why = f"Keeps {tool} distinct while matching global boldness/novelty/goal settings."
+            why = f"Slot-aligned {tool}/{subtype} with pool levers (mock provider)."
             body = f"{title}\n\n{desc}\n\n— {why}"
             out.append(
                 Perspective(
@@ -399,6 +403,7 @@ class CreativeMockProvider(CreativeProvider):
                     text=body,
                     source_tool=tool,
                     spark_element=el,
+                    subtype=subtype,
                     why_interesting=why,
                     boldness_level=boldness.value,
                     novelty_level=novelty.value,
@@ -418,16 +423,43 @@ class CreativeMockProvider(CreativeProvider):
         *,
         spark: SparkState,
         perspectives: list[Perspective],
-    ) -> list[str]:
+        problem_statement: str = "",
+        theme_groups: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
         if not perspectives:
             return []
         kg = (spark.key_goal or "").strip()
+        _ = problem_statement  # parity with OpenAI provider signature
+        themes = theme_groups or []
+        t1 = themes[0] if themes else {}
+        pids_theme0 = t1.get("perspective_ids") if isinstance(t1, dict) else None
+        if isinstance(pids_theme0, list) and len(pids_theme0) >= 2:
+            pid_a, pid_b = str(pids_theme0[0]), str(pids_theme0[1])
+        else:
+            pid_a = perspectives[0].perspective_id
+            pid_b = perspectives[1].perspective_id if len(perspectives) > 1 else pid_a
+        theme_idx_b = 1 if len(themes) > 1 else 0
+        label_a = str(t1.get("theme_label", "")).strip() if isinstance(t1, dict) else ""
         return [
-            (
-                f"Clarifying «{_clip(kg, 200)}» helps decide what to test first "
-                "and what success should look like."
-            ),
-            "Small, observable experiments beat large commitments before assumptions are validated.",
+            {
+                "text": (
+                    f"The real issue is not stating «{_clip(kg, 160)}» more clearly, but making progress "
+                    "visible before motivation decays—people act on what they can verify, not on abstract goals."
+                ),
+                "why_it_matters": "Invention work should bias toward observable loops rather than bigger pledges.",
+                "theme_index": 0,
+                "source_perspective_ids": [pid_a, pid_b],
+                "theme_label": label_a or None,
+            },
+            {
+                "text": (
+                    "The tension is between wanting stronger guidance and not wanting that guidance to feel "
+                    "like another interruptive obligation layered onto an already crowded day."
+                ),
+                "why_it_matters": "Later concepts should feel like rhythm and support, not surveillance or nagging.",
+                "theme_index": theme_idx_b,
+                "source_perspective_ids": [pid_b] if pid_b != pid_a else [pid_a],
+            },
         ]
 
     async def invention_from_insights(

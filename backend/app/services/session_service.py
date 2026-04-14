@@ -83,6 +83,13 @@ def _normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
 def _parse_perspective(raw: dict[str, Any]) -> Perspective:
     desc = raw.get("description") or raw.get("text") or ""
     text = raw.get("text") or desc
+    rs_raw = raw.get("rank_score")
+    rank_score: float | None = None
+    if rs_raw is not None and rs_raw != "":
+        try:
+            rank_score = float(rs_raw)
+        except (TypeError, ValueError):
+            rank_score = None
     return Perspective(
         perspective_id=raw.get("perspective_id") or str(uuid4()),
         description=desc,
@@ -94,11 +101,14 @@ def _parse_perspective(raw: dict[str, Any]) -> Perspective:
         action_ref=raw.get("action_ref"),
         selected=bool(raw.get("selected", False)),
         promising=bool(raw.get("promising", False)),
+        pool_excluded=bool(raw.get("pool_excluded", False)),
         title=raw.get("title"),
         why_interesting=raw.get("why_interesting"),
         boldness_level=raw.get("boldness_level"),
         novelty_level=raw.get("novelty_level"),
         goal_priority_alignment=raw.get("goal_priority_alignment"),
+        subtype=raw.get("subtype"),
+        rank_score=rank_score,
     )
 
 
@@ -146,11 +156,18 @@ def _parse_insights(raw: Any) -> list[InsightRecord]:
         if isinstance(item, str):
             out.append(InsightRecord(insight_id=str(uuid4()), iteration=1, text=item))
         elif isinstance(item, dict):
+            why = str(item.get("why_it_matters") or "").strip()
+            tl = str(item.get("theme_label") or "").strip()
             out.append(
                 InsightRecord(
                     insight_id=item.get("insight_id", str(uuid4())),
                     iteration=int(item.get("iteration", 1)),
                     text=item.get("text", ""),
+                    why_it_matters=why or None,
+                    source_perspective_ids=list(item.get("source_perspective_ids") or []),
+                    source_tools=list(item.get("source_tools") or []),
+                    source_spark_elements=list(item.get("source_spark_elements") or []),
+                    theme_label=tl or None,
                 )
             )
     return out
