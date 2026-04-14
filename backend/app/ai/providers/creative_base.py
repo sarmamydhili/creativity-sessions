@@ -3,6 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from app.models.creative_levers import CreativeLevers
+from app.models.perspective_pool import (
+    BoldnessLevel,
+    GoalPriorityPool,
+    NoveltyLevel,
+)
 from app.models.session import (
     EnlightenmentArtifact,
     InventionArtifact,
@@ -56,6 +61,20 @@ class CreativeProvider(ABC):
         num_outputs: int,
     ) -> tuple[list[Perspective], str, list[str]]:
         """CREATIVE LEVER CONTROL: perspectives, recommended line, insight candidates."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def generate_perspective_pool(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        boldness: BoldnessLevel,
+        novelty: NoveltyLevel,
+        goal_priority: GoalPriorityPool,
+        max_perspectives: int,
+    ) -> tuple[list[Perspective], str | None, list[str]]:
+        """Single GenAI call: all four cognitive tools, balanced pool."""
         raise NotImplementedError
 
     @abstractmethod

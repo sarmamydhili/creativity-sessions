@@ -10,6 +10,11 @@ import httpx
 from app.ai.prompts import templates as prompt_templates
 from app.ai.providers.creative_base import CreativeProvider
 from app.models.creative_levers import CreativeLevers
+from app.models.perspective_pool import (
+    BoldnessLevel,
+    GoalPriorityPool,
+    NoveltyLevel,
+)
 from app.models.session import (
     EnlightenmentArtifact,
     InventionArtifact,
@@ -20,6 +25,7 @@ from app.services.creative_lever_prompt_builder import (
     build_lever_system_prompt,
     build_lever_user_prompt,
 )
+from app.services.perspective_pool_prompt import build_perspective_pool_user_prompt
 
 OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions"
 
@@ -37,6 +43,53 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     if not m:
         raise ValueError("No JSON object in model response")
     return json.loads(m.group())
+
+
+def _normalize_pool_tool_slug(raw: str) -> str:
+    t = (raw or "analogy").lower().strip().replace(" ", "_").replace("-", "_")
+    if t in ("re_categorization", "recategorisation"):
+        return "recategorization"
+    if t in ("analogy", "recategorization", "combination", "association"):
+        return t
+    return "analogy"
+
+
+def _normalize_pool_spark_element(raw: str) -> str:
+    t = (raw or "parts").lower().strip().replace(" ", "_")
+    if t == "keygoal" or t == "key-goal":
+        return "key_goal"
+    if t in ("situation", "parts", "actions", "role", "key_goal"):
+        return t
+    return "parts"
+
+
+def _perspective_from_pool_item(it: dict[str, Any]) -> Perspective | None:
+    if not isinstance(it, dict):
+        return None
+    pid_raw = it.get("id")
+    pid = str(pid_raw).strip() if pid_raw else str(uuid4())
+    title = str(it.get("title", "")).strip()
+    desc = str(it.get("description", "")).strip()
+    why = str(it.get("why_it_is_interesting", "")).strip()
+    parts = [p for p in (title, desc, why) if p]
+    body = "\n\n".join(parts) if parts else ""
+    if not body.strip():
+        return None
+    tool = _normalize_pool_tool_slug(str(it.get("tool_used", "analogy")))
+    el = _normalize_pool_spark_element(str(it.get("spark_element", "parts")))
+    return Perspective(
+        perspective_id=pid,
+        title=title or None,
+        description=desc or body,
+        text=body,
+        source_tool=tool,
+        spark_element=el,
+        why_interesting=why or None,
+        boldness_level=str(it.get("boldness_level", "")).strip() or None,
+        novelty_level=str(it.get("novelty_level", "")).strip() or None,
+        goal_priority_alignment=str(it.get("goal_priority_alignment", "")).strip() or None,
+        selected=False,
+    )
 
 
 def _clean_spark_field(text: str) -> str:
@@ -242,6 +295,50 @@ class OpenAICreativeProvider(CreativeProvider):
         if isinstance(ins_raw, list):
             insight_candidates = [str(x).strip() for x in ins_raw if str(x).strip()]
         return out[:num_outputs], rec, insight_candidates
+
+    async def generate_perspective_pool(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        boldness: BoldnessLevel,
+        novelty: NoveltyLevel,
+        goal_priority: GoalPriorityPool,
+        max_perspectives: int,
+    ) -> tuple[list[Perspective], str | None, list[str]]:
+        system = prompt_templates.PERSPECTIVE_POOL_SYSTEM
+        user = build_perspective_pool_user_prompt(
+            problem_statement=problem_statement,
+            spark=spark,
+            boldness=boldness,
+            novelty=novelty,
+            goal_priority=goal_priority,
+            max_perspectives=max_perspectives,
+        )
+        raw = await self._chat_json(system=system, user=user)
+        items = raw.get("perspectives")
+        if not isinstance(items, list):
+            items = []
+        out: list[Perspective] = []
+        for it in items:
+            p = _perspective_from_pool_item(it) if isinstance(it, dict) else None
+            if p is not None:
+                out.append(p)
+        cap = max(1, min(max_perspectives, 32))
+        out = out[:cap]
+        rec: str | None = None
+        if out:
+            rec = (out[0].title or out[0].text or "").strip() or None
+        insight_candidates: list[str] = []
+        ins_raw = raw.get("insight_candidates")
+        if isinstance(ins_raw, list):
+            insight_candidates = [str(x).strip() for x in ins_raw if str(x).strip()]
+        if not insight_candidates and out:
+            insight_candidates = [
+                f"Compare two perspectives that optimize {goal_priority.value.replace('_', ' ')} differently.",
+                "Pick one perspective to prototype with minimal scope.",
+            ]
+        return out, rec, insight_candidates
 
     async def insights_from_perspectives(
         self,

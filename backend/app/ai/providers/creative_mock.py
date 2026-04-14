@@ -6,6 +6,11 @@ from uuid import uuid4
 
 from app.ai.providers.creative_base import CreativeProvider
 from app.models.creative_levers import CreativeLevers
+from app.models.perspective_pool import (
+    BoldnessLevel,
+    GoalPriorityPool,
+    NoveltyLevel,
+)
 from app.models.session import (
     EnlightenmentArtifact,
     InventionArtifact,
@@ -357,6 +362,54 @@ class CreativeMockProvider(CreativeProvider):
             f"Test whether {levers.spark_target} is the real bottleneck before scaling a fix.",
             f"If {levers.goal_priority} matters most, narrow to one measurable signal for the next iteration.",
             f"Contrast a {levers.depth.lower()} path with one more radical option to surface tradeoffs.",
+        ]
+        return out, rec, insight_candidates
+
+    async def generate_perspective_pool(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        boldness: BoldnessLevel,
+        novelty: NoveltyLevel,
+        goal_priority: GoalPriorityPool,
+        max_perspectives: int,
+    ) -> tuple[list[Perspective], str | None, list[str]]:
+        tools = ["analogy", "recategorization", "combination", "association"]
+        els = ["situation", "parts", "actions", "role", "key_goal"]
+        ps = _clip((problem_statement or "").strip(), 140) or "the problem"
+        n = max(1, min(max_perspectives, 32))
+        out: list[Perspective] = []
+        gp = goal_priority.value.replace("_", " ")
+        for i in range(n):
+            tool = tools[i % 4]
+            el = els[i % 5]
+            title = f"{tool.replace('recategorization', 'Re-categorization').title()} · {i + 1}"
+            desc = (
+                f"[{tool} | boldness={boldness.value} | novelty={novelty.value} | {gp}] "
+                f"Apply {tool} to «{ps}» via SPARK dimension «{el}»."
+            )
+            why = f"Keeps {tool} distinct while matching global boldness/novelty/goal settings."
+            body = f"{title}\n\n{desc}\n\n— {why}"
+            out.append(
+                Perspective(
+                    perspective_id=str(uuid4()),
+                    title=title,
+                    description=desc,
+                    text=body,
+                    source_tool=tool,
+                    spark_element=el,
+                    why_interesting=why,
+                    boldness_level=boldness.value,
+                    novelty_level=novelty.value,
+                    goal_priority_alignment=goal_priority.value,
+                    selected=False,
+                )
+            )
+        rec = out[0].text if out else None
+        insight_candidates = [
+            f"Prioritize {gp} when choosing which angle to test first.",
+            "Contrast a low-cost probe with a higher-fidelity pilot.",
         ]
         return out, rec, insight_candidates
 

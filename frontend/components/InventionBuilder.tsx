@@ -6,6 +6,8 @@ type Props = {
   session: SessionDetail;
   loading: string | null;
   inventionLocked: boolean;
+  /** Shown as native tooltip when the button is disabled (why it won’t run). */
+  inventionLockTitle?: string;
   onGenerate: () => void;
 };
 
@@ -13,6 +15,7 @@ export function InventionBuilder({
   session,
   loading,
   inventionLocked,
+  inventionLockTitle,
   onGenerate,
 }: Props) {
   const inv = session.invention;
@@ -30,11 +33,12 @@ export function InventionBuilder({
       </p>
       <button
         type="button"
-        className="w-full max-w-xs rounded-xl bg-spark-role py-2.5 text-sm font-semibold text-white shadow-soft disabled:opacity-45 sm:w-auto sm:px-6"
+        className="w-full max-w-xs cursor-pointer rounded-xl bg-spark-role py-2.5 text-sm font-semibold text-white shadow-soft disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-6"
         disabled={inventionLocked}
         title={
-          inventionLocked && !(session.insights && session.insights.length)
-            ? "Generate insights first."
+          inventionLocked
+            ? (inventionLockTitle ??
+              "Generate insights first, then return here to build a solution.")
             : "Propose one invention concept from your insights."
         }
         onClick={onGenerate}

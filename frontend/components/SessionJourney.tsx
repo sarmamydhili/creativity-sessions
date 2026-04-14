@@ -1,22 +1,23 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
-  CreativeLevers,
   Perspective,
+  PerspectivePoolSettings,
   SessionDetail,
   VariationItem,
   WorkflowStep,
 } from "@/lib/types";
-import { DEFAULT_CREATIVE_LEVERS } from "@/lib/types";
+import { DEFAULT_PERSPECTIVE_POOL } from "@/lib/types";
 import {
   addPerspective,
+  commitPerspectives,
   deletePerspective,
   generateEnlightenment,
   generateInsights,
   generateInvention,
-  generatePerspectives,
+  generatePerspectivePool,
   generateSpark,
   generateVariations,
   getHealth,
@@ -519,16 +520,30 @@ export function SessionJourney({
   );
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const errBannerRef = useRef<HTMLDivElement>(null);
 
   const [sparkEdit, setSparkEdit] = useState<Record<string, string>>({});
   const [problemEdit, setProblemEdit] = useState(initial.problem_statement);
   const [titleEdit, setTitleEdit] = useState(initial.title ?? "");
   const [creativeAi, setCreativeAi] = useState<"openai" | "mock" | null>(null);
-  const [creativeLevers, setCreativeLevers] = useState<CreativeLevers>(() => ({
-    ...DEFAULT_CREATIVE_LEVERS,
-  }));
+  const [poolSettings, setPoolSettings] = useState<PerspectivePoolSettings>(
+    () => ({ ...DEFAULT_PERSPECTIVE_POOL }),
+  );
   const [activeRail, setActiveRail] = useState<SparkRailKey>("situation");
-  const [compareMode, setCompareMode] = useState(false);
+  const [perspectivePool, setPerspectivePool] = useState<Perspective[]>(
+    () => initial.perspectives ?? [],
+  );
+  const [explorationActive, setExplorationActive] = useState(
+    () => (initial.perspectives?.length ?? 0) === 0,
+  );
+  const [poolSearch, setPoolSearch] = useState("");
+  const [poolSort, setPoolSort] = useState<
+    "order" | "short" | "long" | "selected"
+  >("order");
+  const [poolSelectedOnly, setPoolSelectedOnly] = useState(false);
+  const [lastPreviewRecommended, setLastPreviewRecommended] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     void getHealth()
@@ -537,6 +552,12 @@ export function SessionJourney({
       )
       .catch(() => setCreativeAi(null));
   }, []);
+
+  useEffect(() => {
+    if (err && errBannerRef.current) {
+      errBannerRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [err]);
 
   useEffect(() => {
     setVariationDraft(normalizeVariations(session.variations));
@@ -565,17 +586,28 @@ export function SessionJourney({
   }, [session.spark_state]);
 
   useEffect(() => {
-    const saved = session.last_creative_levers;
+    const saved = session.last_perspective_pool;
     if (saved && typeof saved === "object") {
-      const tool =
-        saved.tool ??
-        (saved as { cognitive_tool?: CreativeLevers["tool"] }).cognitive_tool ??
-        DEFAULT_CREATIVE_LEVERS.tool;
-      setCreativeLevers({ ...DEFAULT_CREATIVE_LEVERS, ...saved, tool });
+      setPoolSettings({ ...DEFAULT_PERSPECTIVE_POOL, ...saved });
     } else {
-      setCreativeLevers({ ...DEFAULT_CREATIVE_LEVERS });
+      setPoolSettings({ ...DEFAULT_PERSPECTIVE_POOL });
     }
   }, [session.session_id]);
+
+  useEffect(() => {
+    setPerspectivePool(initial.perspectives ?? []);
+    setExplorationActive((initial.perspectives?.length ?? 0) === 0);
+    setPoolSearch("");
+    setPoolSort("order");
+    setPoolSelectedOnly(false);
+    setLastPreviewRecommended(null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!explorationActive) {
+      setPerspectivePool(session.perspectives);
+    }
+  }, [session.perspectives, explorationActive, session.session_id]);
 
   async function run<T>(key: string, fn: () => Promise<T>) {
     setErr(null);
@@ -644,6 +676,12 @@ export function SessionJourney({
   }
 
   function patchSessionPerspective(pid: string, patch: Partial<Perspective>) {
+    if (explorationActive) {
+      setPerspectivePool((prev) =>
+        prev.map((x) => (x.perspective_id === pid ? { ...x, ...patch } : x)),
+      );
+      return;
+    }
     setSession((s) => ({
       ...s,
       perspectives: s.perspectives.map((x) =>
@@ -653,6 +691,7 @@ export function SessionJourney({
   }
 
   async function savePerspectiveText(perspectiveId: string) {
+    if (explorationActive) return;
     const p = session.perspectives.find((x) => x.perspective_id === perspectiveId);
     if (!p) return;
     setErr(null);
@@ -674,6 +713,10 @@ export function SessionJourney({
     field: "selected" | "promising",
     value: boolean,
   ) {
+    if (explorationActive) {
+      patchSessionPerspective(p.perspective_id, { [field]: value });
+      return;
+    }
     setErr(null);
     setLoading(`pt-${p.perspective_id}-${field}`);
     try {
@@ -689,6 +732,13 @@ export function SessionJourney({
   }
 
   async function removePerspectiveCard(p: Perspective) {
+    if (explorationActive) {
+      if (!window.confirm("Remove this perspective from your pool?")) return;
+      setPerspectivePool((prev) =>
+        prev.filter((x) => x.perspective_id !== p.perspective_id),
+      );
+      return;
+    }
     if (!window.confirm("Remove this perspective?")) return;
     setErr(null);
     setLoading(`pdel-${p.perspective_id}`);
@@ -703,6 +753,21 @@ export function SessionJourney({
   }
 
   async function addBlankPerspective() {
+    if (explorationActive) {
+      setPerspectivePool((prev) => [
+        ...prev,
+        {
+          perspective_id: newId(),
+          text: "",
+          description: "",
+          source_tool: "user",
+          spark_element: "parts",
+          selected: false,
+          promising: false,
+        },
+      ]);
+      return;
+    }
     setErr(null);
     setLoading("padd");
     try {
@@ -715,6 +780,77 @@ export function SessionJourney({
     }
   }
 
+  async function runGeneratePerspectives() {
+    setErr(null);
+    setLoading("persp-gen");
+    try {
+      const res = await generatePerspectivePool(sessionId, {
+        ...poolSettings,
+        max_perspectives: 30,
+        previewOnly: true,
+      });
+      setPerspectivePool(res.perspectives);
+      setExplorationActive(true);
+      setLastPreviewRecommended(res.recommended_perspective ?? null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function runCommitPerspectives() {
+    const chosen = perspectivePool.filter((p) => p.selected);
+    if (chosen.length === 0) return;
+    setErr(null);
+    setLoading("persp-commit");
+    try {
+      const s = await commitPerspectives(sessionId, {
+        perspectives: chosen,
+        perspective_pool: poolSettings,
+      });
+      setSession(s);
+      setPerspectivePool(s.perspectives);
+      setExplorationActive(false);
+      setLastPreviewRecommended(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  const displayedPerspectives = useMemo(() => {
+    const indexed = perspectivePool.map((p, i) => ({ p, i }));
+    let rows = indexed;
+    const q = poolSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(({ p }) =>
+        (p.text || p.description || "").toLowerCase().includes(q),
+      );
+    }
+    if (poolSelectedOnly) {
+      rows = rows.filter(({ p }) => p.selected);
+    }
+    const out = [...rows];
+    if (poolSort === "short") {
+      out.sort(
+        (a, b) =>
+          (a.p.text || "").length - (b.p.text || "").length,
+      );
+    } else if (poolSort === "long") {
+      out.sort(
+        (a, b) =>
+          (b.p.text || "").length - (a.p.text || "").length,
+      );
+    } else if (poolSort === "selected") {
+      out.sort((a, b) => Number(b.p.selected) - Number(a.p.selected));
+    } else {
+      out.sort((a, b) => a.i - b.i);
+    }
+    return out.map(({ p }) => p);
+  }, [perspectivePool, poolSearch, poolSort, poolSelectedOnly]);
+
   /** Perspectives use SPARK pieces/actions (saved variations optional). */
   const perspectivesAiLocked = session.current_step === "session_created";
 
@@ -722,20 +858,23 @@ export function SessionJourney({
 
   const canUseVariations = session.current_step !== "session_created";
 
+  /** Match backend generate_insights: if no card is “selected”, all perspectives are still used. */
   const insightsLocked =
     loading !== null ||
     session.current_step === "session_created" ||
+    explorationActive ||
     session.perspectives.length === 0;
 
+  /** Enable whenever we have saved insights to build from (same gate as backend insight_texts). */
   const inventionLocked =
-    loading !== null ||
-    session.current_step === "session_created" ||
-    !(session.insights && session.insights.length > 0);
+    loading !== null || (session.insights?.length ?? 0) === 0;
 
-  const selectedPerspectives = session.perspectives.filter((p) => p.selected);
-  const promisingPerspectives = session.perspectives.filter(
-    (p) => p.promising,
-  );
+  const inventionLockTitle =
+    loading !== null
+      ? "Wait for the current action to finish."
+      : (session.insights?.length ?? 0) === 0
+        ? "Generate insights first — use “Generate insights” in the tray (works with all perspective cards if none are checked)."
+        : undefined;
 
   function handleRailSelect(key: SparkRailKey) {
     setActiveRail(key);
@@ -755,23 +894,33 @@ export function SessionJourney({
     });
   }
 
+  const selectedForTray = explorationActive
+    ? []
+    : session.perspectives.filter((p) => p.selected);
+  const promisingForTray = explorationActive
+    ? []
+    : session.perspectives.filter((p) => p.promising);
+
   const mainColumn = (
     <div className="stack journey-main-col">
-      <div className="card">
-        <div className="muted">Current step</div>
-        <strong>{stepLabel(session.current_step)}</strong> · iteration{" "}
-        {session.current_iteration} · status {session.status}
-      </div>
-
       {err ? (
-        <p className="error" role="alert" aria-live="polite">
-          {err}
-        </p>
+        <div
+          ref={errBannerRef}
+          className="rounded-lg border border-red-200 bg-red-50/90 px-3 py-2 shadow-sm"
+          role="alert"
+          aria-live="assertive"
+        >
+          <p className="error m-0 text-sm font-medium text-red-900">{err}</p>
+        </div>
       ) : null}
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Problem</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Session and problem</h2>
+        <p className="muted text-sm" style={{ marginTop: "0.25rem" }}>
+          <strong>{stepLabel(session.current_step)}</strong> · iteration{" "}
+          {session.current_iteration} · {session.status}
+        </p>
+        <p className="muted" style={{ marginTop: "0.35rem" }}>
           Describe the challenge you are working on. You can revise it anytime;
           later steps use the latest saved version.
         </p>
@@ -815,8 +964,14 @@ export function SessionJourney({
         </button>
       </section>
 
-      <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>1. SPARK breakdown</h2>
+      <details className="card stack open">
+        <summary
+          className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
+          style={{ fontSize: "1.1rem" }}
+        >
+          1. SPARK breakdown
+        </summary>
+        <div className="mt-3 stack">
         {!session.spark_state ? (
           <p className="muted">
             Define your lens: Situation, Pieces, Actions, Role, Key goal. Generation
@@ -877,10 +1032,17 @@ export function SessionJourney({
             ))}
           </div>
         ) : null}
-      </section>
+        </div>
+      </details>
 
-      <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>2. SPARK transformation</h2>
+      <details className="card stack open">
+        <summary
+          className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
+          style={{ fontSize: "1.1rem" }}
+        >
+          2. SPARK transformation
+        </summary>
+        <div className="mt-3 stack">
         <p className="muted">
           Edit the SPARK baseline per dimension here (section 1 only shows the
           generated snapshot). Change perspective: for <strong>Situation</strong>,
@@ -976,142 +1138,168 @@ export function SessionJourney({
             ))}
           </div>
         ))}
-      </section>
+        </div>
+      </details>
 
-      <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>3. Perspectives</h2>
-        <p className="muted">
-          Explore angles on your problem. Use <strong>creative levers</strong> to
-          steer GenAI reframing, or the classic flow that combines{" "}
-          <strong>Pieces</strong> × <strong>Actions</strong> × creativity tools
-          (from saved variations when present). Requires SPARK from step 1.
-        </p>
+      <section
+        id="perspective-workspace"
+        className="card stack min-h-[min(70vh,920px)] rounded-2xl border-2 border-indigo-100 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-card sm:p-6"
+      >
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h2 style={{ margin: 0, fontSize: "1.25rem" }} className="text-slate-900">
+              Perspective workspace
+            </h2>
+            <p className="muted mt-1 max-w-3xl text-sm">
+              Tune boldness, novelty, and goal priority, then run <strong>one</strong> GenAI batch (up to 30 angles), then
+              filter, sort, and select here — all local until you continue. No
+              auto-generation when levers change.
+            </p>
+          </div>
+          {explorationActive ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
+              Local draft
+            </span>
+          ) : (
+            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-900">
+              Saved on session
+            </span>
+          )}
+        </div>
+
         <CreativeLeverPanel
-          value={creativeLevers}
-          onChange={setCreativeLevers}
+          value={poolSettings}
+          onChange={setPoolSettings}
           disabled={loading !== null || perspectivesAiLocked}
         />
-        <div className="row perspective-toolbar" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             type="button"
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-indigo-700 disabled:opacity-50"
             disabled={loading !== null || perspectivesAiLocked}
             title={
               perspectivesAiLocked
                 ? "Generate SPARK first."
-                : "Generate perspectives using your lever settings (count follows divergence: 3 / 5 / 8, capped by max)."
+                : "One GenAI call — up to 30 perspectives in your browser only."
             }
-            onClick={() =>
-              run("persp-lev", () =>
-                generatePerspectives(sessionId, 16, creativeLevers),
-              )
-            }
+            onClick={() => void runGeneratePerspectives()}
           >
-            {loading === "persp-lev" ? "…" : "Generate with creative levers"}
+            {loading === "persp-gen" ? "…" : "Generate Perspectives"}
           </button>
           <button
             type="button"
-            className="btn-secondary"
-            disabled={loading !== null || perspectivesAiLocked}
-            title={
-              perspectivesAiLocked
-                ? "Generate SPARK first."
-                : "Legacy: Pieces × Actions × creativity tools matrix."
-            }
-            onClick={() =>
-              run("persp", () => generatePerspectives(sessionId, 14, null))
-            }
-          >
-            {loading === "persp" ? "…" : "Classic matrix (Pieces × Actions)"}
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
+            className="btn-secondary rounded-xl px-3 py-2 text-sm"
             disabled={loading !== null || perspectivesManualLocked}
             onClick={() => void addBlankPerspective()}
           >
             {loading === "padd" ? "…" : "Add your own card"}
           </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={loading !== null || perspectivesAiLocked}
-            title="Pick a random SPARK target and generate with your other levers."
-            onClick={() => {
-              const next = {
-                ...creativeLevers,
-                spark_target: "Surprise Me" as const,
-              };
-              setCreativeLevers(next);
-              void run("persp-surprise", () =>
-                generatePerspectives(sessionId, 16, next),
-              );
-            }}
+          <span className="text-xs text-slate-500">
+            {perspectivePool.length} in pool
+            {displayedPerspectives.length !== perspectivePool.length
+              ? ` · ${displayedPerspectives.length} shown`
+              : ""}
+          </span>
+        </div>
+
+        {lastPreviewRecommended && explorationActive ? (
+          <div
+            className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-950"
+            role="status"
           >
-            {loading === "persp-surprise" ? "…" : "Surprise me"}
-          </button>
+            <strong className="text-indigo-900">Model note: </strong>
+            <span className="whitespace-pre-wrap">{lastPreviewRecommended}</span>
+          </div>
+        ) : null}
+
+        {session.last_recommended_perspective && !explorationActive ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <strong className="text-slate-800">Last saved recommendation: </strong>
+            {session.last_recommended_perspective}
+          </div>
+        ) : null}
+
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="min-w-[12rem] flex-1">
+            <label className="label text-xs text-slate-500" htmlFor="pool-search">
+              Filter by text
+            </label>
+            <input
+              id="pool-search"
+              type="search"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              placeholder="Search perspectives…"
+              value={poolSearch}
+              onChange={(e) => setPoolSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label text-xs text-slate-500" htmlFor="pool-sort">
+              Sort
+            </label>
+            <select
+              id="pool-sort"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              value={poolSort}
+              onChange={(e) =>
+                setPoolSort(e.target.value as typeof poolSort)
+              }
+            >
+              <option value="order">Original order</option>
+              <option value="short">Shortest first</option>
+              <option value="long">Longest first</option>
+              <option value="selected">Selected first</option>
+            </select>
+          </div>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
-              checked={compareMode}
-              onChange={(e) => setCompareMode(e.target.checked)}
+              checked={poolSelectedOnly}
+              onChange={(e) => setPoolSelectedOnly(e.target.checked)}
             />
-            Compare view
+            Selected only
           </label>
         </div>
-        {(session.last_recommended_perspective ||
-          (session.last_insight_candidates &&
-            session.last_insight_candidates.length > 0)) && (
-          <div
-            style={{
-              marginTop: "0.75rem",
-              padding: "0.65rem 0.75rem",
-              borderRadius: "6px",
-              border: "1px solid var(--border, rgba(255,255,255,0.12))",
-              background: "rgba(59, 130, 246, 0.06)",
-            }}
-          >
-            <div className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.35rem" }}>
-              Lever run output (persisted on the session)
-            </div>
-            {session.last_recommended_perspective ? (
-              <div style={{ marginBottom: "0.5rem" }}>
-                <strong style={{ fontSize: "0.85rem" }}>Recommended perspective</strong>
-                <p style={{ margin: "0.25rem 0 0", whiteSpace: "pre-wrap" }}>
-                  {session.last_recommended_perspective}
-                </p>
-              </div>
-            ) : null}
-            {session.last_insight_candidates &&
-            session.last_insight_candidates.length > 0 ? (
-              <div>
-                <strong style={{ fontSize: "0.85rem" }}>Insight candidates</strong>
-                <ul style={{ margin: "0.35rem 0 0", paddingLeft: "1.25rem" }}>
-                  {session.last_insight_candidates.map((line, i) => (
-                    <li key={i} style={{ marginBottom: "0.2rem" }}>
-                      {line}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-          </div>
-        )}
 
-        <PerspectiveCards
-          perspectives={session.perspectives}
-          loading={loading}
-          compareMode={compareMode}
-          onPatchLocal={patchSessionPerspective}
-          onToggleField={togglePerspectiveField}
-          onSaveText={(id) => void savePerspectiveText(id)}
-          onRemove={removePerspectiveCard}
-        />
+        <div className="mt-4 min-h-0 flex-1">
+          <PerspectiveCards
+            perspectives={displayedPerspectives}
+            loading={loading}
+            localMode={explorationActive}
+            onPatchLocal={patchSessionPerspective}
+            onToggleField={togglePerspectiveField}
+            onSaveText={(id) => void savePerspectiveText(id)}
+            onRemove={removePerspectiveCard}
+          />
+        </div>
+
+        <div className="sticky bottom-0 z-10 mt-6 border-t border-slate-200 bg-gradient-to-t from-slate-50 to-transparent pt-4">
+          <button
+            type="button"
+            className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-slate-800 disabled:opacity-45 sm:w-auto sm:min-w-[280px]"
+            disabled={
+              loading !== null ||
+              perspectivePool.filter((p) => p.selected).length === 0
+            }
+            onClick={() => void runCommitPerspectives()}
+          >
+            {loading === "persp-commit"
+              ? "…"
+              : "Continue with Selected Perspectives"}
+          </button>
+          <p className="muted mt-2 text-xs">
+            Saves only checked cards to the session and unlocks insights. Select at
+            least one card.
+          </p>
+        </div>
       </section>
 
       <InventionBuilder
         session={session}
         loading={loading}
         inventionLocked={inventionLocked}
+        inventionLockTitle={inventionLockTitle}
         onGenerate={() => run("inv", () => generateInvention(sessionId))}
       />
 
@@ -1138,10 +1326,12 @@ export function SessionJourney({
           <InsightsTray
             session={session}
             progressPercent={workflowProgressPercent(session.current_step)}
-            selectedPerspectives={selectedPerspectives}
-            promisingPerspectives={promisingPerspectives}
+            selectedPerspectives={selectedForTray}
+            promisingPerspectives={promisingForTray}
+            perspectiveDraftActive={explorationActive}
             insightsLocked={insightsLocked}
             inventionLocked={inventionLocked}
+            inventionLockTitle={inventionLockTitle}
             loading={loading}
             onGenerateInsights={() =>
               run("ins", () => generateInsights(sessionId))

@@ -14,6 +14,8 @@ export type PerspectiveCardsProps = {
   perspectives: Perspective[];
   loading: string | null;
   compareMode?: boolean;
+  /** When true, edits and toggles stay client-side (no Save to server). */
+  localMode?: boolean;
   onPatchLocal: (perspectiveId: string, patch: Partial<Perspective>) => void;
   onToggleField: (
     p: Perspective,
@@ -28,6 +30,7 @@ export function PerspectiveCards({
   perspectives,
   loading,
   compareMode = false,
+  localMode = false,
   onPatchLocal,
   onToggleField,
   onSaveText,
@@ -36,8 +39,7 @@ export function PerspectiveCards({
   if (perspectives.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
-        No perspective cards yet. Generate with creative levers or the classic
-        matrix, or add your own card.
+        No perspectives in this view. Generate a batch or widen your filters.
       </p>
     );
   }
@@ -47,7 +49,7 @@ export function PerspectiveCards({
       className={
         compareMode
           ? "grid gap-4 md:grid-cols-2"
-          : "flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 md:snap-none md:flex-col md:overflow-visible md:pb-0 [-webkit-overflow-scrolling:touch]"
+          : "flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 md:grid md:grid-cols-1 md:gap-4 md:overflow-visible md:pb-0 [-webkit-overflow-scrolling:touch] lg:grid-cols-2 xl:grid-cols-3"
       }
     >
       {perspectives.map((p, idx) => (
@@ -64,6 +66,9 @@ export function PerspectiveCards({
             </span>
           </div>
           <div className="perspective-card-body flex min-w-0 flex-col gap-2">
+            {p.title ? (
+              <p className="text-sm font-semibold text-slate-900">{p.title}</p>
+            ) : null}
             <label
               className="label text-xs text-slate-500"
               htmlFor={`pt-${p.perspective_id}`}
@@ -113,7 +118,11 @@ export function PerspectiveCards({
                   void onToggleField(p, "selected", e.target.checked)
                 }
               />
-              <span className="text-slate-700">Use when generating insights</span>
+              <span className="text-slate-700">
+                {localMode
+                  ? "Select to keep when you continue"
+                  : "Use when generating insights"}
+              </span>
             </label>
             <label className="perspective-check flex cursor-pointer gap-2">
               <input
@@ -129,21 +138,23 @@ export function PerspectiveCards({
             </label>
           </div>
           <div className="perspective-card-actions flex flex-wrap gap-2 border-t border-slate-100 pt-2">
-            <button
-              type="button"
-              className="rounded-xl bg-spark-situation px-3 py-2 text-sm font-medium text-white disabled:opacity-45"
-              disabled={loading !== null}
-              onClick={() => void onSaveText(p.perspective_id)}
-            >
-              Save text
-            </button>
+            {!localMode ? (
+              <button
+                type="button"
+                className="rounded-xl bg-spark-situation px-3 py-2 text-sm font-medium text-white disabled:opacity-45"
+                disabled={loading !== null}
+                onClick={() => void onSaveText(p.perspective_id)}
+              >
+                Save text
+              </button>
+            ) : null}
             <button
               type="button"
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
               disabled={loading !== null}
               onClick={() => void onRemove(p)}
             >
-              Delete
+              {localMode ? "Remove from pool" : "Delete"}
             </button>
           </div>
         </article>

@@ -1,5 +1,10 @@
 import type {
+  BoldnessTier,
   CreativeLevers,
+  GoalPriorityPool,
+  NoveltyTier,
+  Perspective,
+  PerspectivePoolSettings,
   PerspectivesGenerateResponse,
   SessionDetail,
   SessionListResponse,
@@ -145,13 +150,17 @@ export async function persistVariations(
   });
 }
 
-/** GenAI: classic matrix, or pass `creative_levers` for CREATIVE LEVER CONTROL. */
+/** GenAI: pass `creative_levers` for levered perspective generation. Use `previewOnly` to avoid persisting. */
 export async function generatePerspectives(
   sessionId: string,
-  maxPerspectives = 16,
+  maxPerspectives = 30,
   creativeLevers?: CreativeLevers | null,
+  options?: { previewOnly?: boolean },
 ): Promise<PerspectivesGenerateResponse> {
-  const body: Record<string, unknown> = { max_perspectives: maxPerspectives };
+  const body: Record<string, unknown> = {
+    max_perspectives: maxPerspectives,
+    preview_only: options?.previewOnly ?? false,
+  };
   if (creativeLevers != null) {
     body.creative_levers = creativeLevers;
   }
@@ -159,6 +168,50 @@ export async function generatePerspectives(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** Unified pool: one GenAI call, all four cognitive tools (boldness / novelty / goal priority). */
+export async function generatePerspectivePool(
+  sessionId: string,
+  body: {
+    boldness: BoldnessTier;
+    novelty: NoveltyTier;
+    goal_priority: GoalPriorityPool;
+    max_perspectives?: number;
+    previewOnly?: boolean;
+  },
+): Promise<PerspectivesGenerateResponse> {
+  return api(
+    `/api/sessions/${encodeURIComponent(sessionId)}/perspectives/generate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        boldness: body.boldness,
+        novelty: body.novelty,
+        goal_priority: body.goal_priority,
+        max_perspectives: body.max_perspectives ?? 30,
+        preview_only: body.previewOnly ?? false,
+      }),
+    },
+  );
+}
+
+/** Persist selected perspectives after local exploration (replaces session list). */
+export async function commitPerspectives(
+  sessionId: string,
+  body: {
+    perspectives: Perspective[];
+    creative_levers?: CreativeLevers | null;
+    perspective_pool?: PerspectivePoolSettings | null;
+  },
+): Promise<SessionDetail> {
+  return api(
+    `/api/sessions/${encodeURIComponent(sessionId)}/perspectives/commit`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export async function addPerspective(

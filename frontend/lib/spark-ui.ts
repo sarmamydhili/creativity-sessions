@@ -16,16 +16,24 @@ export function workflowProgressPercent(step: WorkflowStep): number {
   return Math.round((i / (ORDER.length - 1)) * 100);
 }
 
+/** True when `step` is the same as or after `minimum` in the creativity journey order. */
+export function stepAtOrAfter(step: WorkflowStep, minimum: WorkflowStep): boolean {
+  const i = ORDER.indexOf(step);
+  const j = ORDER.indexOf(minimum);
+  if (i < 0 || j < 0) return false;
+  return i >= j;
+}
+
 export function suggestedNextMove(session: SessionDetail): string {
   const s = session.current_step;
   if (s === "session_created") {
     return "Save your problem statement, then tap Generate SPARK to frame the challenge in five dimensions.";
   }
   if (s === "spark_generated") {
-    return "Try variations on one SPARK dimension, then open Perspectives to blend ideas with creative levers.";
+    return "Optionally refine SPARK in transformation, then open Perspective workspace — Generate Perspectives, select, and Continue.";
   }
   if (s === "variations_generated") {
-    return "Generate perspectives (creative levers or classic matrix), then select cards for insights.";
+    return "Use Perspective workspace: Generate Perspectives (one batch), explore locally, then Continue with selected.";
   }
   if (s === "perspectives_generated") {
     return "Generate insights from your selected perspectives, then build a solution sketch.";

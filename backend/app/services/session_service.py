@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 
 from app.models.creative_levers import CreativeLevers
+from app.models.perspective_pool import PerspectivePoolSettings
 from app.models.session import (
     EnlightenmentArtifact,
     HistoryEntry,
@@ -70,6 +71,8 @@ def _normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
         d["deleted"] = False
     if "last_creative_levers" not in d:
         d["last_creative_levers"] = None
+    if "last_perspective_pool" not in d:
+        d["last_perspective_pool"] = None
     if "last_recommended_perspective" not in d:
         d["last_recommended_perspective"] = None
     if "last_insight_candidates" not in d:
@@ -79,10 +82,11 @@ def _normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
 
 def _parse_perspective(raw: dict[str, Any]) -> Perspective:
     desc = raw.get("description") or raw.get("text") or ""
+    text = raw.get("text") or desc
     return Perspective(
         perspective_id=raw.get("perspective_id") or str(uuid4()),
         description=desc,
-        text=desc,
+        text=text,
         iteration=int(raw.get("iteration", 1)),
         source_tool=raw.get("source_tool", ""),
         spark_element=raw.get("spark_element", ""),
@@ -90,6 +94,11 @@ def _parse_perspective(raw: dict[str, Any]) -> Perspective:
         action_ref=raw.get("action_ref"),
         selected=bool(raw.get("selected", False)),
         promising=bool(raw.get("promising", False)),
+        title=raw.get("title"),
+        why_interesting=raw.get("why_interesting"),
+        boldness_level=raw.get("boldness_level"),
+        novelty_level=raw.get("novelty_level"),
+        goal_priority_alignment=raw.get("goal_priority_alignment"),
     )
 
 
@@ -222,6 +231,13 @@ def _doc_to_detail(doc: dict[str, Any]) -> SessionDetail:
             last_creative_levers = CreativeLevers.model_validate(raw_levers)
         except Exception:
             last_creative_levers = None
+    last_perspective_pool: PerspectivePoolSettings | None = None
+    raw_pool = d.get("last_perspective_pool")
+    if isinstance(raw_pool, dict):
+        try:
+            last_perspective_pool = PerspectivePoolSettings.model_validate(raw_pool)
+        except Exception:
+            last_perspective_pool = None
     last_rec = d.get("last_recommended_perspective")
     last_rec_str = str(last_rec).strip() if last_rec else None
     last_ins_raw = d.get("last_insight_candidates") or []
@@ -241,6 +257,7 @@ def _doc_to_detail(doc: dict[str, Any]) -> SessionDetail:
         variations=_parse_variations_from_raw(d.get("variations")),
         tool_applications=list(d.get("tool_applications") or []),
         last_creative_levers=last_creative_levers,
+        last_perspective_pool=last_perspective_pool,
         last_recommended_perspective=last_rec_str,
         last_insight_candidates=last_insight_candidates,
         perspectives=perspectives,

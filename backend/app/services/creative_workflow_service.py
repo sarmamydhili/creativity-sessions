@@ -21,6 +21,7 @@ from app.models.session import (
     PerspectiveCreateRequest,
     PerspectiveSelectionResponse,
     PerspectiveUpdateRequest,
+    PerspectivesCommitRequest,
     PerspectivesGenerateRequest,
     PerspectivesGenerateResponse,
     SessionDetail,
@@ -31,8 +32,11 @@ from app.models.session import (
     VariationsGenerateResponse,
     WorkflowStep,
 )
+from app.models.perspective_pool import (
+    PerspectivePoolGenerateRequest,
+    PerspectivePoolSettings,
+)
 from app.repositories.session_repository import SessionRepository
-from app.services.creative_lever_prompt_builder import divergence_to_count
 from app.services.session_service import (
     SessionService,
     _normalize_doc,
@@ -293,13 +297,13 @@ class CreativeWorkflowService:
             **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
         )
         next_iter = int(d.get("current_iteration", 1)) + 1
+        cur_iter = int(d.get("current_iteration", 1))
         recommended: str | None = None
         insight_cands: list[str] = []
         levers_applied = req.creative_levers
 
         if req.creative_levers is not None:
-            want = divergence_to_count(req.creative_levers.divergence)
-            num_outputs = min(want, req.max_perspectives)
+            num_outputs = min(req.max_perspectives, 32)
             raw_new, recommended, insight_cands = await self._provider.perspectives_with_creative_levers(
                 problem_statement=d["problem_statement"],
                 spark=spark,
@@ -338,7 +342,19 @@ class CreativeWorkflowService:
             hist_payload = {"mode": mode, "count": len(raw_new)}
             set_extra = {}
 
-        new_ps = [p.model_copy(update={"iteration": next_iter}) for p in raw_new]
+        iter_for_cards = cur_iter if req.preview_only else next_iter
+        new_ps = [p.model_copy(update={"iteration": iter_for_cards}) for p in raw_new]
+
+        if req.preview_only:
+            return PerspectivesGenerateResponse(
+                session=self._sessions.to_detail(doc),
+                perspectives=new_ps,
+                recommended_perspective=recommended,
+                insight_candidates=insight_cands,
+                creative_levers_applied=levers_applied,
+                perspective_pool_applied=None,
+            )
+
         existing = _load_perspectives(d)
         combined = existing + new_ps
         tool_apps = list(d.get("tool_applications") or [])
@@ -366,7 +382,137 @@ class CreativeWorkflowService:
             recommended_perspective=recommended,
             insight_candidates=insight_cands,
             creative_levers_applied=levers_applied,
+            perspective_pool_applied=None,
         )
+
+    async def generate_perspective_pool(
+        self,
+        session_id: str,
+        req: PerspectivePoolGenerateRequest,
+    ) -> PerspectivesGenerateResponse:
+        """Unified pool: one GenAI call, all four cognitive tools, boldness/novelty/goal only."""
+        doc = await self._repo.find_by_session_id(session_id)
+        if doc is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        d = _normalize_doc(doc)
+        _require_minimum_step(doc, WorkflowStep.spark_generated)
+        spark = SparkState(
+            **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
+        )
+        next_iter = int(d.get("current_iteration", 1)) + 1
+        cur_iter = int(d.get("current_iteration", 1))
+        settings = PerspectivePoolSettings(
+            boldness=req.boldness,
+            novelty=req.novelty,
+            goal_priority=req.goal_priority,
+        )
+        num = min(req.max_perspectives, 32)
+        raw_new, recommended, insight_cands = await self._provider.generate_perspective_pool(
+            problem_statement=d["problem_statement"],
+            spark=spark,
+            boldness=req.boldness,
+            novelty=req.novelty,
+            goal_priority=req.goal_priority,
+            max_perspectives=num,
+        )
+        mode = "perspective_pool"
+        hist_payload: dict[str, Any] = {
+            "mode": mode,
+            "perspective_pool": settings.model_dump(),
+            "recommended_perspective": recommended,
+            "insight_candidates": insight_cands,
+            "count": len(raw_new),
+        }
+        set_extra: dict[str, Any] = {
+            "last_perspective_pool": settings.model_dump(),
+            "last_recommended_perspective": recommended,
+            "last_insight_candidates": insight_cands,
+        }
+        iter_for_cards = cur_iter if req.preview_only else next_iter
+        new_ps = [p.model_copy(update={"iteration": iter_for_cards}) for p in raw_new]
+
+        if req.preview_only:
+            return PerspectivesGenerateResponse(
+                session=self._sessions.to_detail(doc),
+                perspectives=new_ps,
+                recommended_perspective=recommended,
+                insight_candidates=insight_cands,
+                creative_levers_applied=None,
+                perspective_pool_applied=settings,
+            )
+
+        existing = _load_perspectives(d)
+        combined = existing + new_ps
+        tool_apps = list(d.get("tool_applications") or [])
+        entry: dict[str, Any] = {
+            "mode": mode,
+            "iteration": next_iter,
+            "perspective_ids": [p.perspective_id for p in new_ps],
+            "perspective_pool": settings.model_dump(),
+        }
+        tool_apps.append(entry)
+        hist = self._hist(HistoryEventKind.perspectives_generated, hist_payload)
+        mongo_update: dict[str, Any] = {
+            "perspectives": [p.model_dump(mode="python") for p in combined],
+            "tool_applications": tool_apps,
+            "current_step": WorkflowStep.perspectives_generated.value,
+            "current_iteration": next_iter,
+            **set_extra,
+        }
+        out = await self._repo.append_history_and_set(session_id, hist, mongo_update)
+        assert out is not None
+        return PerspectivesGenerateResponse(
+            session=self._sessions.to_detail(out),
+            perspectives=new_ps,
+            recommended_perspective=recommended,
+            insight_candidates=insight_cands,
+            creative_levers_applied=None,
+            perspective_pool_applied=settings,
+        )
+
+    async def commit_perspectives(
+        self,
+        session_id: str,
+        req: PerspectivesCommitRequest,
+    ) -> SessionDetail:
+        """Replace stored perspectives with the user's committed selection (post-exploration)."""
+        doc = await self._repo.find_by_session_id(session_id)
+        if doc is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        d = _normalize_doc(doc)
+        _require_minimum_step(doc, WorkflowStep.spark_generated)
+        if not d.get("spark_state"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="SPARK required",
+            )
+        next_iter = int(d.get("current_iteration", 1)) + 1
+        normalized: list[Perspective] = []
+        for p in req.perspectives:
+            normalized.append(
+                p.model_copy(update={"iteration": next_iter, "selected": True}),
+            )
+        hist_payload: dict[str, Any] = {
+            "mode": "commit",
+            "count": len(normalized),
+        }
+        if req.creative_levers is not None:
+            hist_payload["creative_levers"] = req.creative_levers.model_dump(by_alias=True)
+        if req.perspective_pool is not None:
+            hist_payload["perspective_pool"] = req.perspective_pool.model_dump()
+        hist = self._hist(HistoryEventKind.perspectives_generated, hist_payload)
+        mongo_update: dict[str, Any] = {
+            "perspectives": [p.model_dump(mode="python") for p in normalized],
+            "current_step": WorkflowStep.perspectives_generated.value,
+            "current_iteration": next_iter,
+        }
+        if req.creative_levers is not None:
+            mongo_update["last_creative_levers"] = req.creative_levers.model_dump(by_alias=True)
+        if req.perspective_pool is not None:
+            mongo_update["last_perspective_pool"] = req.perspective_pool.model_dump()
+        out = await self._repo.append_history_and_set(session_id, hist, mongo_update)
+        assert out is not None
+        return self._sessions.to_detail(out)
 
     async def toggle_perspective_selection(
         self,
@@ -593,13 +739,18 @@ class CreativeWorkflowService:
         if doc is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
         d = _normalize_doc(doc)
-        _require_minimum_step(doc, WorkflowStep.insights_generated)
+        _require_minimum_step(doc, WorkflowStep.spark_generated)
+        if not d.get("spark_state"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="SPARK required before invention",
+            )
         raw_insights = d.get("insights") or []
         insight_texts = _insight_texts_from(raw_insights)
         if not insight_texts:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Insights required before invention",
+                detail="Insights required before invention — generate insights first.",
             )
         spark = SparkState(
             **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},

@@ -34,6 +34,11 @@ export interface Perspective {
   perspective_id: string;
   text: string;
   description?: string;
+  title?: string | null;
+  why_interesting?: string | null;
+  boldness_level?: string | null;
+  novelty_level?: string | null;
+  goal_priority_alignment?: string | null;
   iteration?: number;
   source_tool: string;
   spark_element: string;
@@ -42,6 +47,43 @@ export interface Perspective {
   selected: boolean;
   promising?: boolean;
 }
+
+/** Unified perspective pool controls (single GenAI call, all four cognitive tools). */
+export type BoldnessTier = "low" | "medium" | "high";
+export type NoveltyTier = "low" | "medium" | "high";
+export type GoalPriorityPool =
+  | "simplicity"
+  | "cost_efficiency"
+  | "comfort"
+  | "innovation"
+  | "sustainability"
+  | "speed"
+  | "reliability";
+
+export interface PerspectivePoolSettings {
+  boldness: BoldnessTier;
+  novelty: NoveltyTier;
+  goal_priority: GoalPriorityPool;
+}
+
+export const BOLDNESS_TIER_OPTIONS: BoldnessTier[] = ["low", "medium", "high"];
+export const NOVELTY_TIER_OPTIONS: NoveltyTier[] = ["low", "medium", "high"];
+
+export const GOAL_PRIORITY_POOL_OPTIONS: { value: GoalPriorityPool; label: string }[] = [
+  { value: "simplicity", label: "Simplicity" },
+  { value: "cost_efficiency", label: "Cost efficiency" },
+  { value: "comfort", label: "Comfort" },
+  { value: "innovation", label: "Innovation" },
+  { value: "sustainability", label: "Sustainability" },
+  { value: "speed", label: "Speed" },
+  { value: "reliability", label: "Reliability" },
+];
+
+export const DEFAULT_PERSPECTIVE_POOL: PerspectivePoolSettings = {
+  boldness: "medium",
+  novelty: "medium",
+  goal_priority: "innovation",
+};
 
 export interface InsightRecord {
   insight_id: string;
@@ -193,11 +235,12 @@ export const NOVELTY_OPTIONS: NoveltyLever[] = [
   "Unexpected",
 ];
 
+/** Defaults include hidden API fields (divergence, abstraction, domain_lens) for prompts. */
 export const DEFAULT_CREATIVE_LEVERS: CreativeLevers = {
   spark_target: "Pieces",
   tool: "Analogy",
   depth: "Moderate",
-  divergence: "Balanced",
+  divergence: "Exploratory",
   abstraction: "Normal",
   domain_lens: "Engineering",
   goal_priority: "Innovation",
@@ -210,6 +253,7 @@ export interface PerspectivesGenerateResponse {
   recommended_perspective?: string | null;
   insight_candidates: string[];
   creative_levers_applied?: CreativeLevers | null;
+  perspective_pool_applied?: PerspectivePoolSettings | null;
 }
 
 export interface SessionDetail extends SessionSummary {
@@ -219,6 +263,7 @@ export interface SessionDetail extends SessionSummary {
   tool_applications: Record<string, unknown>[];
   /** Persisted when using creative lever generation. */
   last_creative_levers?: CreativeLevers | null;
+  last_perspective_pool?: PerspectivePoolSettings | null;
   last_recommended_perspective?: string | null;
   last_insight_candidates?: string[];
   perspectives: Perspective[];

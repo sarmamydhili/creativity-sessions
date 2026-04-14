@@ -1,4 +1,11 @@
 from app.models.creative_levers import CreativeLevers, LeveredPerspectivesOutput
+from app.models.perspective_pool import (
+    BoldnessLevel,
+    GoalPriorityPool,
+    NoveltyLevel,
+    PerspectivePoolGenerateRequest,
+    PerspectivePoolSettings,
+)
 from app.models.session import (
     CreativityTool,
     EnlightenmentArtifact,
@@ -15,6 +22,7 @@ from app.models.session import (
     PerspectiveSelectionResponse,
     PerspectiveToggleRequest,
     PerspectiveUpdateRequest,
+    PerspectivesCommitRequest,
     PerspectivesGenerateRequest,
     PerspectivesGenerateResponse,
     SessionCreate,
@@ -36,6 +44,11 @@ from app.models.session import (
 )
 
 __all__ = [
+    "BoldnessLevel",
+    "GoalPriorityPool",
+    "NoveltyLevel",
+    "PerspectivePoolGenerateRequest",
+    "PerspectivePoolSettings",
     "CreativeLevers",
     "LeveredPerspectivesOutput",
     "CreativityTool",
@@ -53,6 +66,7 @@ __all__ = [
     "PerspectiveSelectionResponse",
     "PerspectiveToggleRequest",
     "PerspectiveUpdateRequest",
+    "PerspectivesCommitRequest",
     "PerspectivesGenerateRequest",
     "PerspectivesGenerateResponse",
     "SessionCreate",

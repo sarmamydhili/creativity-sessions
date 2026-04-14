@@ -7,8 +7,11 @@ export type InsightsTrayProps = {
   progressPercent: number;
   selectedPerspectives: Perspective[];
   promisingPerspectives: Perspective[];
+  /** True while exploring a local perspective pool before commit. */
+  perspectiveDraftActive?: boolean;
   insightsLocked: boolean;
   inventionLocked: boolean;
+  inventionLockTitle?: string;
   loading: string | null;
   onGenerateInsights: () => void;
   onGenerateInvention: () => void;
@@ -21,8 +24,10 @@ export function InsightsTray({
   progressPercent,
   selectedPerspectives,
   promisingPerspectives,
+  perspectiveDraftActive = false,
   insightsLocked,
   inventionLocked,
+  inventionLockTitle,
   loading,
   onGenerateInsights,
   onGenerateInvention,
@@ -37,6 +42,12 @@ export function InsightsTray({
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+      {perspectiveDraftActive ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          <strong>Draft pool.</strong> Commit selected perspectives in the main
+          workspace to save them and unlock insights here.
+        </p>
+      ) : null}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
           Creativity progress
@@ -175,8 +186,14 @@ export function InsightsTray({
         </button>
         <button
           type="button"
-          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:opacity-45"
+          className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           disabled={inventionLocked}
+          title={
+            inventionLocked
+              ? (inventionLockTitle ??
+                "Generate insights first, then you can build an invention.")
+              : "Propose one invention concept from your insights."
+          }
           onClick={onGenerateInvention}
         >
           {loading === "inv" ? "…" : "Build invention"}

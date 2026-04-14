@@ -5,11 +5,13 @@ from typing_extensions import Annotated
 from fastapi import APIRouter, Body, Depends
 
 from app.api.deps import get_creative_workflow_service
+from app.models.perspective_pool import PerspectivePoolGenerateRequest
 from app.models.session import (
     EnlightenmentGenerateResponse,
     InsightsGenerateResponse,
     InventionGenerateResponse,
     PerspectiveCreateRequest,
+    PerspectivesCommitRequest,
     PerspectivesGenerateRequest,
     PerspectivesGenerateResponse,
     PerspectiveSelectionRequest,
@@ -84,6 +86,25 @@ async def perspectives_generate(
 ) -> PerspectivesGenerateResponse:
     req = body or PerspectivesGenerateRequest()
     return await wf.generate_perspectives(session_id, req)
+
+
+@router.post("/{session_id}/perspectives/generate", response_model=PerspectivesGenerateResponse)
+async def perspectives_pool_generate(
+    session_id: str,
+    body: PerspectivePoolGenerateRequest,
+    wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
+) -> PerspectivesGenerateResponse:
+    """Unified perspective pool: one GenAI call, all four cognitive tools."""
+    return await wf.generate_perspective_pool(session_id, body)
+
+
+@router.post("/{session_id}/perspectives/commit", response_model=SessionDetail)
+async def perspectives_commit(
+    session_id: str,
+    body: PerspectivesCommitRequest,
+    wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
+) -> SessionDetail:
+    return await wf.commit_perspectives(session_id, body)
 
 
 @router.patch(

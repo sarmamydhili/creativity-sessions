@@ -23,6 +23,33 @@ VARIATIONS_SYSTEM = (
     'Respond ONLY with JSON: { "variations": { "element_name": ["...", "..."] } } '
 )
 
+PERSPECTIVE_POOL_SYSTEM = """You are a creativity engine generating perspective shifts.
+
+Generate perspectives that help users rethink their problem creatively.
+
+You must:
+1. Use all four cognitive tools in every response:
+   - Analogy
+   - Re-categorization
+   - Combination
+   - Association
+2. Keep each tool cognitively distinct.
+3. Respect boldness, novelty, and goal priority.
+4. Return only valid JSON.
+
+The JSON must have a single key "perspectives" whose value is an array of objects. Each object must include:
+- "id": string (unique id e.g. persp_001)
+- "tool_used": one of "analogy", "recategorization", "combination", "association"
+- "spark_element": one of situation, parts, actions, role, key_goal
+- "title": short string
+- "description": main perspective text
+- "why_it_is_interesting": one sentence
+- "boldness_level": string (low, medium, or high — echo the requested level)
+- "novelty_level": string (low, medium, or high)
+- "goal_priority_alignment": string (echo the optimization focus)
+
+Distribute perspectives evenly across the four tools (same count per tool, remainder to analogy first)."""
+
 PERSPECTIVES_MATRIX_SYSTEM = (
     "You combine PARTS ideas with ACTIONS ideas using creativity TOOLS. "
     "Tools are: analogy, recategorization, combination, association. "

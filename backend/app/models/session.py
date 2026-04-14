@@ -8,6 +8,7 @@ from uuid import uuid4
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from app.models.creative_levers import CreativeLevers
+from app.models.perspective_pool import PerspectivePoolSettings
 
 
 def utcnow() -> datetime:
@@ -106,6 +107,14 @@ class Perspective(BaseModel):
     action_ref: str | None = None
     selected: bool = False
     promising: bool = False
+    title: str | None = None
+    why_interesting: str | None = Field(
+        None,
+        description="Why the angle is valuable (from pool generation JSON).",
+    )
+    boldness_level: str | None = None
+    novelty_level: str | None = None
+    goal_priority_alignment: str | None = None
 
     @model_validator(mode="after")
     def _sync_text_description(self) -> Perspective:
@@ -166,6 +175,8 @@ class SessionDetail(SessionSummary):
     tool_applications: list[dict[str, Any]] = Field(default_factory=list)
     """Last CREATIVE LEVER CONTROL selections persisted with the session (optional)."""
     last_creative_levers: CreativeLevers | None = None
+    """Last unified perspective-pool controls (boldness / novelty / goal priority)."""
+    last_perspective_pool: PerspectivePoolSettings | None = None
     last_recommended_perspective: str | None = None
     last_insight_candidates: list[str] = Field(default_factory=list)
     perspectives: list[Perspective] = Field(default_factory=list)
@@ -245,10 +256,14 @@ class VariationsPersistRequest(BaseModel):
 
 # Perspectives
 class PerspectivesGenerateRequest(BaseModel):
-    max_perspectives: int = Field(default=16, ge=4, le=32)
+    max_perspectives: int = Field(default=30, ge=4, le=32)
     creative_levers: CreativeLevers | None = Field(
         None,
         description="If set, use CREATIVE LEVER CONTROL prompt path instead of legacy matrix.",
+    )
+    preview_only: bool = Field(
+        default=False,
+        description="If true, run generation but do not persist perspectives to the session.",
     )
 
 
@@ -258,6 +273,24 @@ class PerspectivesGenerateResponse(BaseModel):
     recommended_perspective: str | None = None
     insight_candidates: list[str] = Field(default_factory=list)
     creative_levers_applied: CreativeLevers | None = None
+    perspective_pool_applied: PerspectivePoolSettings | None = None
+
+
+class PerspectivesCommitRequest(BaseModel):
+    """Replace session perspectives with the committed set (typically user-selected)."""
+
+    perspectives: list[Perspective] = Field(
+        min_length=1,
+        description="Perspectives to persist; replaces the prior list.",
+    )
+    creative_levers: CreativeLevers | None = Field(
+        None,
+        description="Optional legacy creative-lever snapshot to store with the session.",
+    )
+    perspective_pool: PerspectivePoolSettings | None = Field(
+        None,
+        description="Optional perspective-pool settings snapshot.",
+    )
 
 
 class PerspectiveSelectionRequest(BaseModel):
