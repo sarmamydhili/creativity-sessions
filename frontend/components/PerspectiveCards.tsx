@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Perspective } from "@/lib/types";
 
 const TOOL_LABELS: Record<string, string> = {
@@ -80,6 +81,12 @@ export type PerspectiveCardsProps = {
   onRemove: (p: Perspective) => void;
 };
 
+function autosizeTextarea(el: HTMLTextAreaElement, minHeightPx: number): void {
+  el.style.height = "0px";
+  const next = Math.max(el.scrollHeight, minHeightPx);
+  el.style.height = `${next}px`;
+}
+
 export function PerspectiveCards({
   perspectives,
   loading,
@@ -90,6 +97,15 @@ export function PerspectiveCards({
   onSaveText,
   onRemove,
 }: PerspectiveCardsProps) {
+  const [maximizedCardId, setMaximizedCardId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!maximizedCardId) return;
+    if (!perspectives.some((p) => p.perspective_id === maximizedCardId)) {
+      setMaximizedCardId(null);
+    }
+  }, [maximizedCardId, perspectives]);
+
   if (perspectives.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
@@ -103,7 +119,7 @@ export function PerspectiveCards({
       className={
         compareMode
           ? "grid gap-4 md:grid-cols-2"
-          : "flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 md:grid md:grid-cols-1 md:gap-4 md:overflow-visible md:pb-0 [-webkit-overflow-scrolling:touch] lg:grid-cols-2 xl:grid-cols-3"
+          : "flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 md:grid md:grid-cols-1 md:gap-4 md:overflow-visible md:pb-0 [-webkit-overflow-scrolling:touch] lg:grid-cols-2 2xl:grid-cols-2"
       }
     >
       {perspectives.map((p, idx) => {
@@ -111,9 +127,14 @@ export function PerspectiveCards({
         const excluded = Boolean(p.pool_excluded);
         const promising = Boolean(p.promising);
         const busy = loading !== null;
+        const isMaximized = maximizedCardId === p.perspective_id;
 
         const shell =
-          "perspective-card relative flex min-w-[min(100%,22rem)] shrink-0 snap-center flex-col gap-3 rounded-2xl border p-4 pt-3 shadow-card max-md:snap-center md:min-w-0 md:w-full md:shrink md:snap-none transition-colors " +
+          "perspective-card relative flex shrink-0 snap-center flex-col gap-3 rounded-2xl border p-4 pt-3 shadow-card max-md:snap-center md:min-w-0 md:w-full md:shrink md:snap-none transition-all " +
+          (isMaximized
+            ? "min-w-full md:col-span-2 md:row-span-1 md:self-stretch"
+            : "min-w-[min(100%,26rem)]") +
+          " " +
           (excluded
             ? "border-dashed border-slate-400/80 bg-slate-200/50 text-slate-600"
             : promising
@@ -141,7 +162,7 @@ export function PerspectiveCards({
                     ? "cursor-not-allowed text-slate-300"
                     : promising
                       ? "bg-amber-100 text-amber-600 shadow-sm hover:bg-amber-200"
-                      : "text-slate-400 hover:bg-amber-50/80 hover:text-amber-500")
+                      : "text-slate-300 hover:bg-amber-50/80 hover:text-amber-400")
                 }
                 onClick={() =>
                   void onToggleField(p, "promising", !promising)
@@ -173,6 +194,26 @@ export function PerspectiveCards({
               >
                 {excluded ? "+" : "×"}
               </button>
+              <button
+                type="button"
+                disabled={busy}
+                aria-pressed={isMaximized}
+                aria-label={isMaximized ? "Minimize card" : "Maximize card"}
+                title={isMaximized ? "Minimize card" : "Maximize card"}
+                className={
+                  "flex h-9 w-9 items-center justify-center rounded-lg border text-base font-semibold leading-none transition " +
+                  (isMaximized
+                    ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700")
+                }
+                onClick={() =>
+                  setMaximizedCardId((cur) =>
+                    cur === p.perspective_id ? null : p.perspective_id,
+                  )
+                }
+              >
+                {isMaximized ? "−" : "⤢"}
+              </button>
             </div>
 
             {excluded ? (
@@ -185,17 +226,6 @@ export function PerspectiveCards({
               <span className="perspective-badge rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-spark-situation">
                 Idea {idx + 1}
               </span>
-              <span className="perspective-badge subtle rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                {TOOL_LABELS[p.source_tool] ?? p.source_tool}
-              </span>
-              {p.subtype ? (
-                <span
-                  className="perspective-badge subtle rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600"
-                  title="Cognitive subtype"
-                >
-                  {subtypeLabel(p.subtype)}
-                </span>
-              ) : null}
               {rank != null ? (
                 <span className="perspective-badge subtle inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50/90 px-2 py-0.5 text-xs font-medium text-emerald-900">
                   <RankStars score={rank} />
@@ -221,16 +251,24 @@ export function PerspectiveCards({
               </label>
               <textarea
                 id={`pt-${p.perspective_id}`}
-                rows={4}
-                className="perspective-body-input min-h-[6.5rem] w-full resize-y rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60"
+                rows={isMaximized ? 8 : 4}
+                className={
+                  "perspective-body-input w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 disabled:opacity-60 " +
+                  (isMaximized ? "min-h-[11rem]" : "min-h-[6.5rem]")
+                }
                 disabled={busy}
                 value={p.text || p.description || ""}
-                onChange={(e) =>
+                ref={(el) => {
+                  if (!el) return;
+                  autosizeTextarea(el, isMaximized ? 176 : 104);
+                }}
+                onChange={(e) => {
+                  autosizeTextarea(e.currentTarget, isMaximized ? 176 : 104);
                   onPatchLocal(p.perspective_id, {
                     text: e.target.value,
                     description: e.target.value,
                   })
-                }
+                }}
                 placeholder="Write a short angle or reframing…"
               />
             </div>
@@ -252,6 +290,19 @@ export function PerspectiveCards({
                 ) : null}
               </div>
             ) : null}
+            <div className="perspective-card-tags mt-1 flex flex-wrap items-center gap-2">
+              <span className="perspective-badge subtle rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                {TOOL_LABELS[p.source_tool] ?? p.source_tool}
+              </span>
+              {p.subtype ? (
+                <span
+                  className="perspective-badge subtle rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-medium text-slate-600"
+                  title="Cognitive subtype"
+                >
+                  {subtypeLabel(p.subtype)}
+                </span>
+              ) : null}
+            </div>
             <div className="perspective-card-controls flex flex-col gap-3 border-t border-slate-100 pt-3 text-sm">
               <label className="perspective-check flex cursor-pointer gap-2">
                 <input

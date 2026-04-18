@@ -280,7 +280,8 @@
     width: 100%;
     min-width: 0;
     min-height: 6.5rem;
-    resize: vertical;
+    resize: none;
+    overflow-y: hidden;
     box-sizing: border-box;
   }
 

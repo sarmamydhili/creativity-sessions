@@ -33,6 +33,13 @@ Novelty: {novelty}
 
 Task: Generate {num_outputs} creative perspective shifts by applying the selected cognitive tool to the selected SPARK target (see SPARK Target above). Respect depth, divergence, abstraction, domain lens, goal priority, and novelty modifiers below.
 
+Perspective quality requirements:
+- A perspective is a reframe/angle, not a final solution.
+- Do not output inventions, feature lists, implementation plans, or product specs.
+- Each perspective must add a distinct line of reasoning (no near-duplicates).
+- Prefer perspectives that expose hidden assumptions, tradeoffs/tensions, sequence constraints, or system effects.
+- Avoid generic phrases that could fit any problem.
+
 Output: Respond with JSON only:
 {{
   "perspectives": [ {{ "text": "string", "source_tool": "analogy|recategorization|combination|association", "spark_element": "situation|parts|actions|role|key_goal", "part_ref": "optional short string", "action_ref": "optional short string" }} ],
@@ -40,7 +47,13 @@ Output: Respond with JSON only:
   "insight_candidates": [ "string", "string", "string" ]
 }}
 
-The perspectives array must have exactly {num_outputs} items. insight_candidates: 2–4 crisp insight lines suggested by these perspectives."""
+The perspectives array must have exactly {num_outputs} items. insight_candidates: 2–4 crisp insight lines suggested by these perspectives.
+
+Before finalizing, silently self-check:
+1) Exactly {num_outputs} outputs?
+2) Distinct perspectives with no paraphrase duplicates?
+3) Perspective-level abstraction (not invention-level)?
+4) Clear fit to selected tool + SPARK target?"""
 
 TOOL_TEMPLATES: dict[str, str] = {
     "Analogy": """TOOL — ANALOGY:
@@ -136,7 +149,10 @@ def resolve_spark_target_text(spark: SparkState, target: str) -> tuple[str, str]
 def build_lever_system_prompt() -> str:
     return (
         "You are a creativity facilitator for structured SPARK problem framing. "
-        "Follow the user's lever settings exactly. Output valid JSON only."
+        "Follow the user's lever settings exactly. "
+        "Generate high-quality perspectives (angles/reframes), not inventions. "
+        "Keep outputs specific, non-generic, and mutually distinct. "
+        "Output valid JSON only."
     )
 
 

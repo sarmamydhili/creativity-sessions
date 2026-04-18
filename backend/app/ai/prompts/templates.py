@@ -100,29 +100,65 @@ PERSPECTIVE_POOL_FEW_SHOT_EXAMPLES_JSON = r"""
 
 PERSPECTIVE_POOL_SYSTEM = """You are a creativity engine generating a unified perspective pool in ONE response.
 
-Rules:
+Your job is to produce high-quality PERSPECTIVES (angles), not inventions (solutions).
+
+Perspective definition:
+- A perspective is a way of seeing the problem differently.
+- It should reframe what matters, what constraints are hidden, or what pattern is being missed.
+- It should NOT prescribe a full product concept, implementation plan, or feature list.
+
+Output format rules:
 - Output ONLY valid JSON: a single object with key "perspectives" (array). No markdown, no prose outside JSON.
 - Do NOT output rank_score or any ranking field; ranking is computed later in code.
 - The user message lists ALLOCATION SLOTS in order. Produce exactly one perspective per slot, same array length and order.
 - For each item i, set "tool_used" and "subtype" to match allocation slot i exactly (canonical strings).
-- All four cognitive tools appear across the pool; counts follow the allocation (balanced; no tool exceeds 35% of the pool).
-- Subtype diversity: honor the subtype given per slot; make the idea clearly reflect that subtype, not a generic use of the tool.
-- Keep tools cognitively distinct from each other.
+- Do not invent new tools/subtypes.
+
+Quality rules (critical):
+- Each perspective must be specific to the user's problem and SPARK context; avoid generic creativity language.
+- Each perspective must introduce a DISTINCT angle. No near-duplicates in title or description.
+- Make the subtype visible in the reasoning:
+  - analogy => clear source-domain pattern transfer
+  - recategorization => clear framing/category shift
+  - combination => clear conceptual merge with interacting elements
+  - association => clear non-obvious conceptual bridge
+- Keep tools cognitively distinct from one another across the pool.
+- Strong perspective wording should often reveal one of:
+  - hidden assumption
+  - overlooked constraint
+  - timing/sequence issue
+  - tradeoff/tension
+  - system-level pattern
+
+Avoid:
+- Generic claims (e.g., "technology can help", "users need convenience")
+- Rephrasing the problem statement with minimal change
+- Motivational slogans
+- Concrete invention proposals (e.g., "build an app/device/platform that ...")
+
+Lever handling:
 - Only these levers affect tone: boldness, novelty, goal_priority (echo optional level fields when present).
+- All four cognitive tools appear across the pool; counts follow allocation (balanced; no tool exceeds 35% of pool).
 
 Required fields per perspective object:
 - "id": unique string (e.g. persp_001)
 - "tool_used": "analogy" | "recategorization" | "combination" | "association"
-- "subtype": string from the subtype catalog in the user message
+- "subtype": string from subtype catalog in user message
 - "spark_element": one of situation, parts, actions, role, key_goal
-- "title": short string
-- "description": main perspective text for the USER'S problem (not the jogging example)
+- "title": short, distinct, non-generic label
+- "description": 1-3 sentences expressing the angle for the USER'S problem (not the jogging example)
 
 Preferred optional fields (include when helpful):
-- "why_it_is_interesting"
+- "why_it_is_interesting": one sentence explaining the shift in understanding
 - "boldness_level"
 - "novelty_level"
 - "goal_priority_alignment"
+
+Internal self-check before finalizing JSON:
+1) Slot alignment exact? (count/order/tool/subtype)
+2) Any duplicates or near-duplicates? If yes, rewrite.
+3) Any invention-like outputs? If yes, abstract to perspective level.
+4) Any generic statements that could fit any problem? If yes, make problem-specific.
 """.strip()
 
 PERSPECTIVE_POOL_USER_TEMPLATE = Template(
@@ -157,6 +193,8 @@ Instructions:
 - Each perspective must align its narrative with that slot's tool and subtype.
 - Vary spark_element across the pool where sensible.
 - Do not repeat titles or near-duplicate descriptions.
+- Keep each description at perspective-level abstraction (angle/reframe), not invention-level concreteness.
+- Prefer descriptions that expose tensions, hidden assumptions, sequence constraints, or deeper patterns.
 """
 )
 
@@ -164,8 +202,10 @@ PERSPECTIVES_MATRIX_SYSTEM = (
     "You combine PARTS ideas with ACTIONS ideas using creativity TOOLS. "
     "Tools are: analogy, recategorization, combination, association. "
     "Do NOT enumerate a full Cartesian product. Pick diverse, meaningful combinations "
-    "that illuminate the problem. Each perspective must name which part idea and action idea "
-    "it builds on. Respond ONLY with JSON: "
+    "that illuminate the problem through distinct angles. "
+    "Each perspective must name which part idea and action idea it builds on, and should expose "
+    "a non-obvious pattern/tension/assumption rather than propose a concrete invention. "
+    "Avoid generic statements and near-duplicates. Respond ONLY with JSON: "
     '{ "perspectives": [ { "text": "...", "source_tool": "analogy|recategorization|combination|association", '
     '"spark_element": "parts+actions", "part_ref": "short quote from parts list", '
     '"action_ref": "short quote from actions list" } ] }'
