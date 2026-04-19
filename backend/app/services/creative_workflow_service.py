@@ -11,6 +11,7 @@ from app.ai.providers.openai_creative import OpenAICreativeProvider
 from app.models.session import (
     EnlightenmentArtifact,
     EnlightenmentGenerateResponse,
+    GhostProposal,
     HistoryEntry,
     HistoryEventKind,
     InsightRecord,
@@ -20,6 +21,8 @@ from app.models.session import (
     Perspective,
     PerspectiveCreateRequest,
     PerspectiveSelectionResponse,
+    ProposeChangesRequest,
+    ProposeChangesResponse,
     PerspectiveUpdateRequest,
     PerspectivesCommitRequest,
     PerspectivesGenerateRequest,
@@ -628,6 +631,20 @@ class CreativeWorkflowService:
                 merged["promising"] = bool(data["promising"])
             if "pool_excluded" in data:
                 merged["pool_excluded"] = bool(data["pool_excluded"])
+            if "position" in data and isinstance(data["position"], dict):
+                x_raw = data["position"].get("x", 0.0)
+                y_raw = data["position"].get("y", 0.0)
+                try:
+                    x = float(x_raw)
+                except (TypeError, ValueError):
+                    x = 0.0
+                try:
+                    y = float(y_raw)
+                except (TypeError, ValueError):
+                    y = 0.0
+                merged["position"] = {"x": x, "y": y}
+            if "is_ghost" in data and data["is_ghost"] is not None:
+                merged["is_ghost"] = bool(data["is_ghost"])
             updated.append(merged)
         if not found:
             raise HTTPException(
@@ -645,6 +662,41 @@ class CreativeWorkflowService:
         )
         assert out is not None
         return self._sessions.to_detail(out)
+
+    async def propose_changes(
+        self,
+        session_id: str,
+        body: ProposeChangesRequest,
+    ) -> ProposeChangesResponse:
+        doc = await self._repo.find_by_session_id(session_id)
+        if doc is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        d = _normalize_doc(doc)
+        _require_minimum_step(doc, WorkflowStep.spark_generated)
+        perspectives = [p for p in _load_perspectives(d) if not p.pool_excluded]
+        if not perspectives:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Need at least one in-pool perspective before proposing changes.",
+            )
+        spark = SparkState(
+            **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
+        )
+        raw = await self._provider.propose_perspective_changes(
+            problem_statement=str(d.get("problem_statement") or ""),
+            spark=spark,
+            perspectives=perspectives,
+            max_proposals=body.max_proposals,
+        )
+        proposals = _build_ghost_proposals(
+            raw,
+            perspectives=perspectives,
+            max_proposals=body.max_proposals,
+        )
+        return ProposeChangesResponse(
+            session=self._sessions.to_detail(doc),
+            proposals=proposals,
+        )
 
     async def delete_perspective(self, session_id: str, perspective_id: str) -> SessionDetail:
         doc = await self._repo.find_by_session_id(session_id)
@@ -908,6 +960,146 @@ def _load_perspectives(d: dict[str, Any]) -> list[Perspective]:
     for p in d.get("perspectives") or []:
         if isinstance(p, dict):
             out.append(_parse_perspective(p))
+    return out
+
+
+def _as_xy(raw: Any) -> tuple[float, float]:
+    if not isinstance(raw, dict):
+        return (0.0, 0.0)
+    try:
+        x = float(raw.get("x", 0.0))
+    except (TypeError, ValueError):
+        x = 0.0
+    try:
+        y = float(raw.get("y", 0.0))
+    except (TypeError, ValueError):
+        y = 0.0
+    return (x, y)
+
+
+def _fallback_position(index: int) -> dict[str, float]:
+    col = index % 3
+    row = index // 3
+    return {"x": float(col * 360), "y": float(row * 220)}
+
+
+def _centroid_for(
+    ids: list[str],
+    *,
+    pos_by_id: dict[str, tuple[float, float]],
+) -> tuple[float, float] | None:
+    pts = [pos_by_id[i] for i in ids if i in pos_by_id]
+    if not pts:
+        return None
+    sx = sum(p[0] for p in pts)
+    sy = sum(p[1] for p in pts)
+    return (sx / len(pts), sy / len(pts))
+
+
+def _proposal_position(
+    *,
+    idx: int,
+    kind: str,
+    target_id: str | None,
+    related_ids: list[str],
+    pos_by_id: dict[str, tuple[float, float]],
+    fallback_index: int,
+) -> dict[str, float]:
+    # Use related centroid first; fallback to target; then deterministic spread.
+    centroid = _centroid_for(related_ids, pos_by_id=pos_by_id)
+    if centroid is None and target_id:
+        centroid = pos_by_id.get(target_id)
+    if centroid is None:
+        return _fallback_position(fallback_index + idx)
+    x, y = centroid
+    # Gentle offsets to avoid full overlap; reposition stays close.
+    if kind == "reposition":
+        dx = 60.0 if idx % 2 == 0 else -60.0
+        dy = 35.0 if (idx // 2) % 2 == 0 else -35.0
+    else:
+        dx = 160.0 if idx % 2 == 0 else -160.0
+        dy = 110.0 if (idx // 2) % 2 == 0 else -110.0
+    return {"x": x + dx, "y": y + dy}
+
+
+def _build_ghost_proposals(
+    raw: list[dict[str, Any]],
+    *,
+    perspectives: list[Perspective],
+    max_proposals: int,
+) -> list[GhostProposal]:
+    if not raw:
+        return []
+    max_n = max(1, min(max_proposals, 12))
+    by_id = {p.perspective_id: p for p in perspectives}
+    pos_by_id: dict[str, tuple[float, float]] = {}
+    for i, p in enumerate(perspectives):
+        x, y = _as_xy(p.position)
+        if x == 0.0 and y == 0.0:
+            fb = _fallback_position(i)
+            x, y = fb["x"], fb["y"]
+        pos_by_id[p.perspective_id] = (x, y)
+
+    out: list[GhostProposal] = []
+    for idx, item in enumerate(raw[:max_n]):
+        kind = str(item.get("proposal_kind", "bridge_card")).strip().lower()
+        if kind not in ("reposition", "bridge_card"):
+            continue
+        target_id = str(item.get("target_perspective_id") or "").strip() or None
+        related = [str(x).strip() for x in (item.get("related_perspective_ids") or []) if str(x).strip()]
+        related = [x for x in related if x in by_id]
+        if target_id and target_id not in by_id:
+            target_id = None
+        pos = _proposal_position(
+            idx=idx,
+            kind=kind,
+            target_id=target_id,
+            related_ids=related,
+            pos_by_id=pos_by_id,
+            fallback_index=len(pos_by_id),
+        )
+        if kind == "reposition":
+            if not target_id:
+                continue
+            base = by_id[target_id]
+            card = base.model_copy(
+                update={
+                    "perspective_id": f"ghost_{uuid4()}",
+                    "position": pos,
+                    "is_ghost": True,
+                    "selected": False,
+                    "promising": False,
+                }
+            )
+        else:
+            desc = str(item.get("description") or item.get("text") or "").strip()
+            if not desc:
+                continue
+            tool = str(item.get("source_tool") or "association").strip() or "association"
+            spark_element = str(item.get("spark_element") or "parts").strip() or "parts"
+            title = str(item.get("title") or "").strip() or None
+            card = Perspective(
+                perspective_id=f"ghost_{uuid4()}",
+                title=title,
+                description=desc,
+                text=desc,
+                source_tool=tool,
+                spark_element=spark_element,
+                selected=False,
+                promising=False,
+                pool_excluded=False,
+                position=pos,
+                is_ghost=True,
+            )
+        out.append(
+            GhostProposal(
+                proposal_kind="reposition" if kind == "reposition" else "bridge_card",
+                target_perspective_id=target_id,
+                related_perspective_ids=related,
+                rationale=str(item.get("rationale") or "").strip() or None,
+                card=card,
+            )
+        )
     return out
 
 

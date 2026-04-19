@@ -52,6 +52,22 @@ export interface Perspective {
   promising?: boolean;
   /** Marked “not in pool” — muted on card; toggled off to include again; persisted. */
   pool_excluded?: boolean;
+  position?: { x: number; y: number };
+  is_ghost?: boolean;
+}
+
+export interface GhostProposal {
+  proposal_id: string;
+  proposal_kind: "reposition" | "bridge_card";
+  target_perspective_id?: string | null;
+  related_perspective_ids: string[];
+  rationale?: string | null;
+  card: Perspective;
+}
+
+export interface ProposeChangesResponse {
+  session: SessionDetail;
+  proposals: GhostProposal[];
 }
 
 /** Unified perspective pool controls (single GenAI call, all four cognitive tools). */

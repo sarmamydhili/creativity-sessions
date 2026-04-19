@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  GhostProposal,
   Perspective,
   PerspectivePoolSettings,
   SessionDetail,
@@ -23,15 +24,16 @@ import {
   getHealth,
   patchSession,
   patchSpark,
+  proposeChanges,
   persistVariations,
   updatePerspective,
 } from "@/lib/api";
-import { HistoryTimeline } from "@/components/HistoryTimeline";
 import { CreativeLeverPanel } from "@/components/CreativeLeverPanel";
 import { EnlightenmentView } from "@/components/EnlightenmentView";
 import { InventionBuilder } from "@/components/InventionBuilder";
 import { InsightsTray } from "@/components/InsightsTray";
-import { PerspectiveCards } from "@/components/PerspectiveCards";
+import { PerspectiveCanvas } from "@/components/PerspectiveCanvas";
+import { SlidingOverlay } from "@/components/SlidingOverlay";
 import { SPARKRail } from "@/components/SPARKRail";
 import { SPARKWorkspace } from "@/components/SPARKWorkspace";
 import type { SparkRailKey } from "@/lib/spark-ui";
@@ -545,6 +547,16 @@ export function SessionJourney({
   const [lastPreviewRecommended, setLastPreviewRecommended] = useState<
     string | null
   >(null);
+  const [sparkOverlayOpen, setSparkOverlayOpen] = useState(false);
+  const [sparkOverlayDraft, setSparkOverlayDraft] = useState<Record<string, string>>(
+    {},
+  );
+  const [overlayPreviewLoading, setOverlayPreviewLoading] = useState(false);
+  const [overlayPreviewAt, setOverlayPreviewAt] = useState<string | null>(null);
+  const [overlayPreview, setOverlayPreview] = useState<Record<string, VariationItem[]>>(
+    {},
+  );
+  const [ghostProposals, setGhostProposals] = useState<GhostProposal[]>([]);
 
   useEffect(() => {
     void getHealth()
@@ -576,13 +588,15 @@ export function SessionJourney({
   useEffect(() => {
     if (session.spark_state) {
       const sp = session.spark_state;
-      setSparkEdit({
+      const next = {
         situation: sp.situation,
         parts: normalizeStoredParts(sp.parts ?? ""),
         actions: sp.actions,
         role: sp.role,
         key_goal: sp.key_goal,
-      });
+      };
+      setSparkEdit(next);
+      setSparkOverlayDraft(next);
     }
   }, [session.spark_state]);
 
@@ -602,6 +616,7 @@ export function SessionJourney({
     setPoolSort("order");
     setPoolSelectedOnly(false);
     setLastPreviewRecommended(null);
+    setGhostProposals([]);
   }, [sessionId]);
 
   useEffect(() => {
@@ -655,6 +670,32 @@ export function SessionJourney({
       setLoading(null);
     }
   }
+
+  async function refreshOverlayPreview() {
+    if (!sparkOverlayOpen) return;
+    setOverlayPreviewLoading(true);
+    try {
+      const res = await generateVariations(
+        sessionId,
+        ["role", "key_goal"],
+        variationDraft,
+      );
+      setOverlayPreview(normalizeVariations(res.merged_variations));
+      setOverlayPreviewAt(new Date().toLocaleTimeString());
+    } catch {
+      // Keep overlay non-blocking; error banner for full workflow still handled elsewhere.
+    } finally {
+      setOverlayPreviewLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!sparkOverlayOpen) return;
+    const h = window.setTimeout(() => {
+      void refreshOverlayPreview();
+    }, 500);
+    return () => window.clearTimeout(h);
+  }, [sparkOverlayDraft, sparkOverlayOpen]);
 
   function updateLine(
     element: string,
@@ -823,6 +864,104 @@ export function SessionJourney({
     } finally {
       setLoading(null);
     }
+  }
+
+  async function runAskSuggestions() {
+    setErr(null);
+    setLoading("propose");
+    try {
+      const res = await proposeChanges(sessionId, { max_proposals: 6 });
+      setGhostProposals(res.proposals ?? []);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function onPerspectiveMove(
+    perspectiveId: string,
+    position: { x: number; y: number },
+  ) {
+    patchSessionPerspective(perspectiveId, { position });
+    if (explorationActive) return;
+    try {
+      const s = await updatePerspective(sessionId, perspectiveId, { position });
+      setSession(s);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    }
+  }
+
+  function onGhostMove(proposalId: string, position: { x: number; y: number }) {
+    setGhostProposals((prev) =>
+      prev.map((g) =>
+        g.proposal_id === proposalId
+          ? { ...g, card: { ...g.card, position } }
+          : g,
+      ),
+    );
+  }
+
+  async function approveGhostProposal(proposalId: string) {
+    const proposal = ghostProposals.find((g) => g.proposal_id === proposalId);
+    if (!proposal) return;
+    const pos = proposal.card.position ?? { x: 0, y: 0 };
+
+    if (proposal.proposal_kind === "reposition" && proposal.target_perspective_id) {
+      patchSessionPerspective(proposal.target_perspective_id, { position: pos, is_ghost: false });
+      if (!explorationActive) {
+        try {
+          const s = await updatePerspective(sessionId, proposal.target_perspective_id, {
+            position: pos,
+            is_ghost: false,
+          });
+          setSession(s);
+        } catch (e) {
+          setErr(e instanceof Error ? e.message : "Error");
+        }
+      }
+      setGhostProposals((prev) => prev.filter((g) => g.proposal_id !== proposalId));
+      return;
+    }
+
+    const bridgeCard: Perspective = {
+      ...proposal.card,
+      perspective_id: newId(),
+      is_ghost: false,
+      position: pos,
+      selected: false,
+      promising: false,
+      pool_excluded: false,
+    };
+    if (explorationActive) {
+      setPerspectivePool((prev) => [...prev, bridgeCard]);
+      setGhostProposals((prev) => prev.filter((g) => g.proposal_id !== proposalId));
+      return;
+    }
+
+    try {
+      const beforeIds = new Set(session.perspectives.map((p) => p.perspective_id));
+      const s = await addPerspective(sessionId, bridgeCard.text || bridgeCard.description || "");
+      setSession(s);
+      const created =
+        s.perspectives.find((p) => !beforeIds.has(p.perspective_id)) ?? null;
+      if (created) {
+        const s2 = await updatePerspective(sessionId, created.perspective_id, {
+          position: pos,
+          is_ghost: false,
+        });
+        setSession(s2);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+      return;
+    }
+    setGhostProposals((prev) => prev.filter((g) => g.proposal_id !== proposalId));
+  }
+
+  function rejectGhostProposal(proposalId: string) {
+    setGhostProposals((prev) => prev.filter((g) => g.proposal_id !== proposalId));
   }
 
   const displayedPerspectives = useMemo(() => {
@@ -1043,102 +1182,24 @@ export function SessionJourney({
           2. SPARK transformation
         </summary>
         <div className="mt-3 stack">
-        <p className="muted">
-          Edit the SPARK baseline per dimension here (section 1 only shows the
-          generated snapshot). Change perspective: for <strong>Situation</strong>,
-          shift context/constraints; for <strong>Pieces</strong>, replace, remove,
-          add, or combine; for <strong>Actions</strong>, reverse, automate, or
-          modify; for <strong>Role</strong>, define multiple stakeholder lenses (not
-          just one persona); for{" "}
-          <strong>Key goal</strong>, change the objective or metric. Max 6 lines
-          per dimension. <strong>Generate variations</strong> refreshes AI lines;
-          <strong>Save</strong> persists.
-        </p>
-        {session.spark_state ? (
-          <div className="row" style={{ marginBottom: "0.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+          <p className="muted">
+            Use the sliding sandbox to iteratively edit SPARK with local shadow
+            state. AI preview refresh is debounced and does not persist until you
+            click commit.
+          </p>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               type="button"
-              disabled={loading !== null}
-              onClick={() =>
-                run("patch", () => patchSpark(sessionId, { ...sparkEdit }))
-              }
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              disabled={loading !== null || !session.spark_state}
+              onClick={() => setSparkOverlayOpen(true)}
             >
-              {loading === "patch" ? "…" : "Save SPARK baseline"}
+              Open Sliding Sandbox
             </button>
-            <span className="muted" style={{ fontSize: "0.85rem" }}>
-              Saves SPARK baseline from transformation (section 2) to the server.
-            </span>
-          </div>
-        ) : null}
-
-        {SPARK_FIELDS.map((el) => (
-          <div
-            key={el}
-            className="spark-variation-block"
-            data-spark-anchor={el}
-            data-spark-phase="variation"
-          >
-            <div className="spark-variation-head">
-              <h3 className="spark-variation-title">{SPARK_LABELS[el]}</h3>
-              <div className="row spark-variation-actions">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  disabled={loading !== null || !canUseVariations}
-                  title={
-                    canUseVariations
-                      ? "Save all variation lines to the server."
-                      : "Generate SPARK first before saving variations."
-                  }
-                  onClick={() => void runPersistVariations(el)}
-                >
-                  {loading?.startsWith("varp-") ? "…" : "Save"}
-                </button>
-              </div>
-            </div>
-            {session.spark_state ? (
-              <SparkFieldBaselineEditor
-                field={el}
-                value={sparkEdit[el] ?? ""}
-                onChange={(next) =>
-                  setSparkEdit((s) => ({ ...s, [el]: next }))
-                }
-                disabled={loading !== null}
-                onGenerate={() => void runGenerateForElement(el)}
-                generateDisabled={loading !== null || !canUseVariations}
-                generateLoading={loading === `var-${el}`}
-              />
+            {overlayPreviewAt ? (
+              <span className="muted text-xs">Preview updated at {overlayPreviewAt}</span>
             ) : null}
-            <p className="muted" style={{ margin: "0.25rem 0 0.5rem", fontSize: "0.85rem" }}>
-              {(variationDraft[el] ?? []).length}{" "}
-              {(variationDraft[el] ?? []).length === 1 ? "line" : "lines"}{" "}
-              (variation ideas below)
-            </p>
-            {(variationDraft[el] ?? []).map((row) => (
-              <div
-                key={row.variation_id}
-                className="variation-line"
-              >
-                <span className="variation-source">{row.source}</span>
-                <textarea
-                  rows={2}
-                  className="variation-line-input"
-                  value={row.text}
-                  onChange={(e) =>
-                    updateLine(el, row.variation_id, e.target.value)
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn-danger-outline"
-                  onClick={() => removeLine(el, row.variation_id)}
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
           </div>
-        ))}
         </div>
       </details>
 
@@ -1282,14 +1343,20 @@ export function SessionJourney({
         </div>
 
         <div className="mt-4 min-h-0 flex-1">
-          <PerspectiveCards
+          <PerspectiveCanvas
             perspectives={displayedPerspectives}
-            loading={loading}
-            localMode={explorationActive}
-            onPatchLocal={patchSessionPerspective}
-            onToggleField={togglePerspectiveField}
-            onSaveText={(id) => void savePerspectiveText(id)}
-            onRemove={removePerspectiveCard}
+            proposals={ghostProposals}
+            loading={loading !== null}
+            onAskSuggestions={() => void runAskSuggestions()}
+            onPerspectiveMove={(id, position) => void onPerspectiveMove(id, position)}
+            onGhostMove={onGhostMove}
+            onToggleSelected={(id, selected) => {
+              const p = perspectivePool.find((x) => x.perspective_id === id);
+              if (!p) return;
+              void togglePerspectiveField(p, "selected", selected);
+            }}
+            onApproveProposal={(proposalId) => void approveGhostProposal(proposalId)}
+            onRejectProposal={rejectGhostProposal}
           />
         </div>
 
@@ -1312,6 +1379,87 @@ export function SessionJourney({
           </p>
         </div>
       </section>
+
+      <SlidingOverlay
+        open={sparkOverlayOpen}
+        title="SPARK Sliding Sandbox"
+        onClose={() => setSparkOverlayOpen(false)}
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-slate-500 bg-slate-800 px-3 py-2 text-sm text-slate-100 hover:bg-slate-700"
+              disabled={overlayPreviewLoading}
+              onClick={() => void refreshOverlayPreview()}
+            >
+              {overlayPreviewLoading ? "Refreshing…" : "Refresh Preview"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              onClick={() =>
+                run("patch", () =>
+                  patchSpark(sessionId, {
+                    situation: sparkOverlayDraft.situation ?? "",
+                    parts: sparkOverlayDraft.parts ?? "",
+                    actions: sparkOverlayDraft.actions ?? "",
+                    role: sparkOverlayDraft.role ?? "",
+                    key_goal: sparkOverlayDraft.key_goal ?? "",
+                  }),
+                ).then(() => {
+                  setSparkEdit(sparkOverlayDraft);
+                  setSparkOverlayOpen(false);
+                })
+              }
+            >
+              Commit
+            </button>
+          </div>
+        }
+      >
+        <div className="grid gap-4 md:grid-cols-2">
+          {SPARK_FIELDS.map((field) => (
+            <div key={field} className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-300">
+                {SPARK_LABELS[field]}
+              </label>
+              <textarea
+                rows={4}
+                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100"
+                value={sparkOverlayDraft[field] ?? ""}
+                onChange={(e) =>
+                  setSparkOverlayDraft((prev) => ({ ...prev, [field]: e.target.value }))
+                }
+              />
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 rounded-xl border border-slate-700 bg-slate-800/70 p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
+            Proposed (Preview)
+          </div>
+          <div className="space-y-2">
+            {Object.entries(overlayPreview)
+              .filter(([, rows]) => Array.isArray(rows) && rows.length > 0)
+              .slice(0, 3)
+              .map(([k, rows]) => (
+                <div key={k}>
+                  <div className="text-xs font-medium text-slate-300">{k}</div>
+                  <ul className="list-disc space-y-1 pl-5 text-xs text-slate-200">
+                    {rows.slice(0, 3).map((r) => (
+                      <li key={r.variation_id}>{r.text}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            {Object.keys(overlayPreview).length === 0 ? (
+              <p className="text-xs text-slate-400">
+                Preview appears after a short typing pause (~500ms) or when you click Refresh Preview.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </SlidingOverlay>
 
       <section
         id="insights-generate"
@@ -1370,7 +1518,8 @@ export function SessionJourney({
           />
         }
         center={mainColumn}
-        tray={
+        tray={null}
+        footer={
           <InsightsTray
             session={session}
             progressPercent={workflowProgressPercent(session.current_step)}
@@ -1378,16 +1527,6 @@ export function SessionJourney({
             promisingPerspectives={promisingForTray}
             perspectiveDraftActive={explorationActive}
           />
-        }
-        footer={
-          <details className="card history-details rounded-2xl border border-slate-200 bg-white shadow-card">
-            <summary className="history-summary cursor-pointer px-4 py-3 text-sm font-semibold text-slate-800">
-              Thinking trail · interaction history
-            </summary>
-            <div className="history-body px-4 pb-4">
-              <HistoryTimeline entries={session.history} />
-            </div>
-          </details>
         }
       />
     </div>

@@ -127,6 +127,14 @@ class Perspective(BaseModel):
         None,
         description="Post-LLM deterministic ranking score (not from the model).",
     )
+    position: dict[str, float] = Field(
+        default_factory=lambda: {"x": 0.0, "y": 0.0},
+        description="Canvas position for perspective cards.",
+    )
+    is_ghost: bool = Field(
+        default=False,
+        description="Ephemeral ghost/proposal flag for frontend rendering.",
+    )
 
     @model_validator(mode="after")
     def _sync_text_description(self) -> Perspective:
@@ -345,6 +353,26 @@ class PerspectiveUpdateRequest(BaseModel):
     selected: bool | None = None
     promising: bool | None = None
     pool_excluded: bool | None = None
+    position: dict[str, float] | None = None
+    is_ghost: bool | None = None
+
+
+class ProposeChangesRequest(BaseModel):
+    max_proposals: int = Field(default=6, ge=1, le=12)
+
+
+class GhostProposal(BaseModel):
+    proposal_id: str = Field(default_factory=lambda: str(uuid4()))
+    proposal_kind: Literal["reposition", "bridge_card"] = "bridge_card"
+    target_perspective_id: str | None = None
+    related_perspective_ids: list[str] = Field(default_factory=list)
+    rationale: str | None = None
+    card: Perspective
+
+
+class ProposeChangesResponse(BaseModel):
+    session: SessionDetail
+    proposals: list[GhostProposal] = Field(default_factory=list)
 
 
 class PerspectiveCreateRequest(BaseModel):

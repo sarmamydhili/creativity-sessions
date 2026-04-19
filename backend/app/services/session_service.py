@@ -90,6 +90,18 @@ def _parse_perspective(raw: dict[str, Any]) -> Perspective:
             rank_score = float(rs_raw)
         except (TypeError, ValueError):
             rank_score = None
+    pos_raw = raw.get("position")
+    x = 0.0
+    y = 0.0
+    if isinstance(pos_raw, dict):
+        try:
+            x = float(pos_raw.get("x", 0.0))
+        except (TypeError, ValueError):
+            x = 0.0
+        try:
+            y = float(pos_raw.get("y", 0.0))
+        except (TypeError, ValueError):
+            y = 0.0
     return Perspective(
         perspective_id=raw.get("perspective_id") or str(uuid4()),
         description=desc,
@@ -109,6 +121,8 @@ def _parse_perspective(raw: dict[str, Any]) -> Perspective:
         goal_priority_alignment=raw.get("goal_priority_alignment"),
         subtype=raw.get("subtype"),
         rank_score=rank_score,
+        position={"x": x, "y": y},
+        is_ghost=bool(raw.get("is_ghost", False)),
     )
 
 

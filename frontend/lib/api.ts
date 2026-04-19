@@ -10,6 +10,7 @@ import type {
   SessionListResponse,
   VariationItem,
   InsightRecord,
+  ProposeChangesResponse,
 } from "./types";
 
 function baseUrl(): string {
@@ -237,12 +238,26 @@ export async function updatePerspective(
     selected?: boolean;
     promising?: boolean;
     pool_excluded?: boolean;
+    position?: { x: number; y: number };
+    is_ghost?: boolean;
   },
 ): Promise<SessionDetail> {
   return api(
     `/api/sessions/${encodeURIComponent(sessionId)}/perspectives/${encodeURIComponent(perspectiveId)}`,
     { method: "PATCH", body: JSON.stringify(body) },
   );
+}
+
+export async function proposeChanges(
+  sessionId: string,
+  body?: { max_proposals?: number },
+): Promise<ProposeChangesResponse> {
+  return api(`/api/sessions/${encodeURIComponent(sessionId)}/propose-changes`, {
+    method: "POST",
+    body: JSON.stringify({
+      max_proposals: body?.max_proposals ?? 6,
+    }),
+  });
 }
 
 export async function deletePerspective(

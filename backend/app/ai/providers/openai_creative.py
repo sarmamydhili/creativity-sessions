@@ -430,6 +430,74 @@ class OpenAICreativeProvider(CreativeProvider):
             )
         return out
 
+    async def propose_perspective_changes(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        perspectives: list[Perspective],
+        max_proposals: int,
+    ) -> list[dict[str, Any]]:
+        if not perspectives:
+            return []
+        system = prompt_templates.PROPOSE_CHANGES_SYSTEM
+        user = json.dumps(
+            {
+                "problem_statement": problem_statement,
+                "max_proposals": max(1, min(max_proposals, 12)),
+                "spark": spark.model_dump(),
+                "perspectives": [
+                    {
+                        "perspective_id": p.perspective_id,
+                        "title": p.title,
+                        "text": p.text or p.description,
+                        "source_tool": p.source_tool,
+                        "spark_element": p.spark_element,
+                        "position": p.position,
+                    }
+                    for p in perspectives
+                ],
+            },
+            ensure_ascii=False,
+        )
+        raw = await self._chat_json(system=system, user=user, temperature=0.45)
+        arr = raw.get("proposals")
+        if not isinstance(arr, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for item in arr:
+            if not isinstance(item, dict):
+                continue
+            kind = str(item.get("proposal_kind", "")).strip().lower()
+            if kind not in ("reposition", "bridge_card"):
+                continue
+            proposal: dict[str, Any] = {
+                "proposal_kind": kind,
+                "target_perspective_id": str(item.get("target_perspective_id") or "").strip() or None,
+                "related_perspective_ids": [
+                    str(x).strip()
+                    for x in (item.get("related_perspective_ids") or [])
+                    if str(x).strip()
+                ],
+                "rationale": str(item.get("rationale") or "").strip() or None,
+            }
+            if kind == "bridge_card":
+                txt = str(item.get("description") or item.get("text") or "").strip()
+                if not txt:
+                    continue
+                proposal.update(
+                    {
+                        "title": str(item.get("title") or "").strip() or None,
+                        "description": txt,
+                        "source_tool": _normalize_pool_tool_slug(str(item.get("source_tool", "association"))),
+                        "spark_element": _normalize_pool_spark_element(str(item.get("spark_element", "parts"))),
+                    }
+                )
+            out.append(proposal)
+            if len(out) >= max(1, min(max_proposals, 12)):
+                break
+        return out
+
     async def invention_from_insights(
         self,
         *,

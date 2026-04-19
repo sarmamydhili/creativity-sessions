@@ -94,6 +94,22 @@ class CreativeProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def propose_perspective_changes(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        perspectives: list[Perspective],
+        max_proposals: int,
+    ) -> list[dict[str, Any]]:
+        """
+        Return non-persisted proposal drafts:
+        - reposition: {proposal_kind, target_perspective_id, related_perspective_ids, rationale}
+        - bridge_card: {proposal_kind, title, description/text, source_tool, spark_element, related_perspective_ids, rationale}
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     async def invention_from_insights(
         self,
         *,

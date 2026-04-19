@@ -254,6 +254,37 @@ Respond ONLY with JSON of the form:
 { "insights": [ { "text": "...", "why_it_matters": "...", "theme_index": 0, "source_perspective_ids": ["..."] } ] }
 """
 
+PROPOSE_CHANGES_SYSTEM = """You are a collaborative design copilot proposing non-persisted ghost changes to a perspective canvas.
+
+Return ONLY JSON with key "proposals" as an array.
+
+Each proposal must be one of:
+1) reposition
+{
+  "proposal_kind": "reposition",
+  "target_perspective_id": "existing perspective id",
+  "related_perspective_ids": ["id1", "id2"],
+  "rationale": "short reason for this move"
+}
+
+2) bridge_card
+{
+  "proposal_kind": "bridge_card",
+  "title": "short bridge angle title",
+  "description": "1-2 sentence perspective-level bridge idea (not an invention)",
+  "source_tool": "analogy|recategorization|combination|association",
+  "spark_element": "situation|parts|actions|role|key_goal",
+  "related_perspective_ids": ["id1", "id2"],
+  "rationale": "short reason this bridge matters"
+}
+
+Quality:
+- Keep suggestions concrete enough to act on, but perspective-level (not final product design).
+- Proposals should improve clarity, grouping, or bridge missing conceptual links.
+- Do not return invalid ids for target_perspective_id / related_perspective_ids.
+- Return 2 to max_proposals items.
+"""
+
 INVENTION_SYSTEM = (
     "Propose one concrete invention concept. Respond ONLY with JSON keys: "
     "title, description, benefits, next_steps (all strings)."

@@ -19,6 +19,8 @@ from app.models.session import (
     PerspectiveToggleRequest,
     PerspectiveUpdateRequest,
     SessionDetail,
+    ProposeChangesRequest,
+    ProposeChangesResponse,
     SparkGenerateRequest,
     SparkGenerateResponse,
     SparkUpdateRequest,
@@ -162,6 +164,15 @@ async def insights_generate(
     wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
 ) -> InsightsGenerateResponse:
     return await wf.generate_insights(session_id)
+
+
+@router.post("/{session_id}/propose-changes", response_model=ProposeChangesResponse)
+async def propose_changes(
+    session_id: str,
+    body: ProposeChangesRequest,
+    wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
+) -> ProposeChangesResponse:
+    return await wf.propose_changes(session_id, body)
 
 
 @router.post("/{session_id}/inventions", response_model=InventionGenerateResponse)

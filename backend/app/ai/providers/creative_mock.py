@@ -462,6 +462,41 @@ class CreativeMockProvider(CreativeProvider):
             },
         ]
 
+    async def propose_perspective_changes(
+        self,
+        *,
+        problem_statement: str,
+        spark: SparkState,
+        perspectives: list[Perspective],
+        max_proposals: int,
+    ) -> list[dict[str, Any]]:
+        _ = (problem_statement, spark)
+        if not perspectives:
+            return []
+        first = perspectives[0]
+        second = perspectives[1] if len(perspectives) > 1 else first
+        proposals: list[dict[str, Any]] = [
+            {
+                "proposal_kind": "reposition",
+                "target_perspective_id": first.perspective_id,
+                "related_perspective_ids": [second.perspective_id],
+                "rationale": "Bring this card closer to a similar angle to reduce scanning distance.",
+            },
+            {
+                "proposal_kind": "bridge_card",
+                "title": "Bridge: guidance without interruption",
+                "description": (
+                    "A bridging perspective is that support should appear as ambient rhythm, "
+                    "not as explicit reminders competing for attention."
+                ),
+                "source_tool": "combination",
+                "spark_element": "role",
+                "related_perspective_ids": [first.perspective_id, second.perspective_id],
+                "rationale": "Connects proactive guidance ideas with low-friction stakeholder needs.",
+            },
+        ]
+        return proposals[: max(1, min(max_proposals, 12))]
+
     async def invention_from_insights(
         self,
         *,
