@@ -14,6 +14,7 @@ SPARK_SYSTEM = (
     "No verbs, conjunctions (e.g. while, and), adverbs, or truncated words. Each line: a single noun phrase (e.g. Joggers, Water bottle, Heat advisory). "
     "actions = VERBS and behaviors—what people or systems do, try, or must accomplish. "
     "role = hats or relationships—who is involved (e.g. user, builder, gatekeeper) and their stance. "
+    "Prefer listing multiple stakeholders (one per line when possible) so later perspective generation can shift lenses. "
     "key_goal = ONE clear outcome or success criterion (not a restatement of the whole problem). "
     "Keep each field 1–3 short sentences except parts may be a denser list."
 )
@@ -129,12 +130,16 @@ Quality rules (critical):
   - timing/sequence issue
   - tradeoff/tension
   - system-level pattern
+- Stakeholder lens shift: across the full pool, cover multiple stakeholder viewpoints where supported by SPARK Role
+  (e.g., primary user, operator/implementer, decision owner, safety/compliance). Do not force all viewpoints in every card.
+- When possible, surface tensions between stakeholder needs (e.g., ease vs reliability, speed vs safety).
 
 Avoid:
 - Generic claims (e.g., "technology can help", "users need convenience")
 - Rephrasing the problem statement with minimal change
 - Motivational slogans
 - Concrete invention proposals (e.g., "build an app/device/platform that ...")
+- Inventing arbitrary stakeholders disconnected from the problem context
 
 Lever handling:
 - Only these levers affect tone: boldness, novelty, goal_priority (echo optional level fields when present).
@@ -159,6 +164,7 @@ Internal self-check before finalizing JSON:
 2) Any duplicates or near-duplicates? If yes, rewrite.
 3) Any invention-like outputs? If yes, abstract to perspective level.
 4) Any generic statements that could fit any problem? If yes, make problem-specific.
+5) Does the overall pool reflect more than one stakeholder lens? If not, rewrite some cards.
 """.strip()
 
 PERSPECTIVE_POOL_USER_TEMPLATE = Template(
@@ -195,6 +201,8 @@ Instructions:
 - Do not repeat titles or near-duplicate descriptions.
 - Keep each description at perspective-level abstraction (angle/reframe), not invention-level concreteness.
 - Prefer descriptions that expose tensions, hidden assumptions, sequence constraints, or deeper patterns.
+- Use SPARK Role as stakeholder input; spread perspectives across multiple lenses where possible
+  (user, operator, decision owner, risk/safety, etc.).
 """
 )
 
@@ -223,6 +231,7 @@ An insight means: "Here is the deeper truth emerging across those angles."
 Your task:
 - Look across the themes and their perspectives (and the problem + SPARK context).
 - Identify recurring patterns, hidden assumptions, tensions, tradeoffs, or shifts in what really matters.
+- Include stakeholder-lens synthesis: identify where stakeholder needs align or conflict, when grounded in the provided perspectives/Role context.
 - Generate 2 to 5 distinct insights (fewer only if the material truly supports fewer).
 - Each insight must be sharper than a summary and less concrete than a solution or product idea.
 - Prefer phrasing that sounds like: the real issue is …; the hidden constraint is …; users need … before …;
@@ -233,6 +242,7 @@ Avoid:
 - Repeating or lightly paraphrasing perspective wording
 - Invention proposals (apps, devices, specific features)
 - Vague motivational statements
+- Inventing new stakeholders not grounded in the provided perspectives or SPARK Role context
 
 For EACH insight, you MUST return:
 - "text": the insight (one or two sentences, concise).

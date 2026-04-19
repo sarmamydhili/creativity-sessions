@@ -258,7 +258,8 @@ const BASELINE_LINE_HINTS: Record<(typeof SPARK_FIELDS)[number], string> = {
   parts:
     "One piece (noun / entity) per line. Edits here are your baseline for this dimension.",
   actions: "One line per action or verb phrase. Add, edit, or remove lines.",
-  role: "One line per role, hat, or stakeholder.",
+  role:
+    "One line per stakeholder lens (e.g., primary user, operator, decision owner, safety/compliance).",
   key_goal: "One line per goal or success criterion.",
 };
 
@@ -1047,7 +1048,8 @@ export function SessionJourney({
           generated snapshot). Change perspective: for <strong>Situation</strong>,
           shift context/constraints; for <strong>Pieces</strong>, replace, remove,
           add, or combine; for <strong>Actions</strong>, reverse, automate, or
-          modify; for <strong>Role</strong>, change identity or user type; for{" "}
+          modify; for <strong>Role</strong>, define multiple stakeholder lenses (not
+          just one persona); for{" "}
           <strong>Key goal</strong>, change the objective or metric. Max 6 lines
           per dimension. <strong>Generate variations</strong> refreshes AI lines;
           <strong>Save</strong> persists.
@@ -1152,7 +1154,8 @@ export function SessionJourney({
             <p className="muted mt-1 max-w-3xl text-sm">
               Tune boldness, novelty, and goal priority, then run <strong>one</strong> GenAI batch (up to 30 angles), then
               filter, sort, and select here — all local until you continue. No
-              auto-generation when levers change.
+              auto-generation when levers change. Role stakeholder lines are used to
+              spread perspectives across different lenses.
             </p>
           </div>
           {explorationActive ? (
@@ -1318,7 +1321,8 @@ export function SessionJourney({
         <p className="muted text-sm text-slate-600">
           Synthesize from checked perspectives. If none are checked, the server uses
           the <strong>top 10</strong> in-pool cards by rank. Run this before you build
-          an invention.
+          an invention. Insight synthesis also looks for stakeholder tensions and
+          tradeoffs when those lenses appear in your selected pool.
         </p>
         <button
           type="button"

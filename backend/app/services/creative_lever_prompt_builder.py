@@ -39,6 +39,8 @@ Perspective quality requirements:
 - Each perspective must add a distinct line of reasoning (no near-duplicates).
 - Prefer perspectives that expose hidden assumptions, tradeoffs/tensions, sequence constraints, or system effects.
 - Avoid generic phrases that could fit any problem.
+- Use stakeholder lens shift where relevant: vary viewpoints across roles (user, operator, decision owner, risk/safety, etc.) rather than staying in one actor lens.
+- Ground stakeholder viewpoints in problem + SPARK context; do not invent random stakeholders.
 
 Output: Respond with JSON only:
 {{
@@ -47,7 +49,7 @@ Output: Respond with JSON only:
   "insight_candidates": [ "string", "string", "string" ]
 }}
 
-The perspectives array must have exactly {num_outputs} items. insight_candidates: 2–4 crisp insight lines suggested by these perspectives.
+The perspectives array must have exactly {num_outputs} items. insight_candidates: 2–4 crisp insight lines suggested by these perspectives, preferably including stakeholder tensions/tradeoffs when present.
 
 Before finalizing, silently self-check:
 1) Exactly {num_outputs} outputs?

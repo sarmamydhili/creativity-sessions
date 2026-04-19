@@ -125,7 +125,8 @@ export function CreativeLeverPanel({ value, onChange, disabled }: Props) {
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-slate-600">
             One generation uses <strong>analogy, re-categorization, combination, and association</strong>{" "}
-            together — you only tune boldness, novelty, and goal priority.
+            together — you only tune boldness, novelty, and goal priority. Role/stakeholder
+            context from SPARK is also used to diversify lenses.
           </p>
         </div>
         <span
