@@ -55,6 +55,53 @@ const SPARK_LABELS: Record<(typeof SPARK_FIELDS)[number], string> = {
   key_goal: "Key goal",
 };
 
+type ArrangeMode = "tool" | "theme";
+
+type IndexedPerspective = {
+  p: Perspective;
+  i: number;
+};
+
+const TOOL_ORDER = ["analogy", "recategorization", "combination", "association"] as const;
+const LANE_X_STEP = 380;
+const ROW_Y_STEP = 230;
+const LANE_BASE_X = 40;
+const ROW_BASE_Y = 40;
+
+function normalizeTool(raw: string | null | undefined): string {
+  const t = (raw || "").toLowerCase().trim().replace("-", "_").replace(" ", "_");
+  if (t === "re_categorization") return "recategorization";
+  if (TOOL_ORDER.includes(t as (typeof TOOL_ORDER)[number])) return t;
+  return "other";
+}
+
+function comparePerspectiveRows(a: IndexedPerspective, b: IndexedPerspective): number {
+  const promisingDiff = Number(Boolean(b.p.promising)) - Number(Boolean(a.p.promising));
+  if (promisingDiff !== 0) return promisingDiff;
+  const selectedDiff = Number(Boolean(b.p.selected)) - Number(Boolean(a.p.selected));
+  if (selectedDiff !== 0) return selectedDiff;
+  const rankA = typeof a.p.rank_score === "number" ? a.p.rank_score : -1;
+  const rankB = typeof b.p.rank_score === "number" ? b.p.rank_score : -1;
+  if (rankB !== rankA) return rankB - rankA;
+  return a.i - b.i;
+}
+
+function laneRowsToPositions(
+  lanes: Array<{ laneKey: string; rows: IndexedPerspective[] }>,
+): Record<string, { x: number; y: number }> {
+  const out: Record<string, { x: number; y: number }> = {};
+  lanes.forEach((lane, laneIndex) => {
+    const sorted = [...lane.rows].sort(comparePerspectiveRows);
+    sorted.forEach((row, rowIndex) => {
+      out[row.p.perspective_id] = {
+        x: LANE_BASE_X + laneIndex * LANE_X_STEP,
+        y: ROW_BASE_Y + rowIndex * ROW_Y_STEP,
+      };
+    });
+  });
+  return out;
+}
+
 function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -557,6 +604,8 @@ export function SessionJourney({
     {},
   );
   const [ghostProposals, setGhostProposals] = useState<GhostProposal[]>([]);
+  const [arrangeMode, setArrangeMode] = useState<ArrangeMode>("tool");
+  const [lastArrangeLabel, setLastArrangeLabel] = useState<string | null>(null);
 
   useEffect(() => {
     void getHealth()
@@ -612,6 +661,8 @@ export function SessionJourney({
   useEffect(() => {
     setPerspectivePool(initial.perspectives ?? []);
     setExplorationActive((initial.perspectives?.length ?? 0) === 0);
+    setArrangeMode("tool");
+    setLastArrangeLabel(null);
     setPoolSearch("");
     setPoolSort("order");
     setPoolSelectedOnly(false);
@@ -868,12 +919,25 @@ export function SessionJourney({
 
   async function runAskSuggestions() {
     setErr(null);
+    if (creativeAi === "mock") {
+      setErr(
+        "Ask AI Agent for Suggestions requires OpenAI provider. Set OPENAI_API_KEY and AI_PROVIDER=openai, restart backend, then try again.",
+      );
+      return;
+    }
     setLoading("propose");
     try {
       const res = await proposeChanges(sessionId, { max_proposals: 6 });
       setGhostProposals(res.proposals ?? []);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Error");
+      const msg = e instanceof Error ? e.message : "Error";
+      if (/requires OpenAI provider/i.test(msg)) {
+        setErr(
+          "Ask AI Agent for Suggestions requires OpenAI provider. Set OPENAI_API_KEY and AI_PROVIDER=openai, restart backend, then try again.",
+        );
+      } else {
+        setErr(msg);
+      }
     } finally {
       setLoading(null);
     }
@@ -929,6 +993,7 @@ export function SessionJourney({
       ...proposal.card,
       perspective_id: newId(),
       is_ghost: false,
+      approved_from_ghost: true,
       position: pos,
       selected: false,
       promising: false,
@@ -950,6 +1015,7 @@ export function SessionJourney({
         why_interesting: bridgeCard.why_interesting ?? null,
         position: pos,
         is_ghost: false,
+        approved_from_ghost: true,
       });
       setSession(s);
     } catch (e) {
@@ -961,6 +1027,135 @@ export function SessionJourney({
 
   function rejectGhostProposal(proposalId: string) {
     setGhostProposals((prev) => prev.filter((g) => g.proposal_id !== proposalId));
+  }
+
+  function buildToolArrangePositions(
+    rows: IndexedPerspective[],
+  ): Record<string, { x: number; y: number }> {
+    const buckets: Record<string, IndexedPerspective[]> = {
+      analogy: [],
+      recategorization: [],
+      combination: [],
+      association: [],
+      other: [],
+    };
+    rows.forEach((row) => {
+      buckets[normalizeTool(row.p.source_tool)].push(row);
+    });
+    const lanes = [
+      { laneKey: "analogy", rows: buckets.analogy },
+      { laneKey: "recategorization", rows: buckets.recategorization },
+      { laneKey: "combination", rows: buckets.combination },
+      { laneKey: "association", rows: buckets.association },
+      { laneKey: "other", rows: buckets.other },
+    ].filter((lane) => lane.rows.length > 0);
+    return laneRowsToPositions(lanes);
+  }
+
+  function buildThemeArrangePositions(
+    rows: IndexedPerspective[],
+  ): Record<string, { x: number; y: number }> {
+    const insights = session.insights ?? [];
+    const laneOrder: string[] = [];
+    const perPerspectiveThemeCounts: Record<string, Record<string, number>> = {};
+
+    insights.forEach((ins, idx) => {
+      const fromLabel = (ins.theme_label ?? "").trim();
+      const laneKey = fromLabel || `theme-${idx + 1}`;
+      if (!laneOrder.includes(laneKey)) {
+        laneOrder.push(laneKey);
+      }
+      const sourceIds = ins.source_perspective_ids ?? [];
+      sourceIds.forEach((pid) => {
+        const key = String(pid || "").trim();
+        if (!key) return;
+        if (!perPerspectiveThemeCounts[key]) {
+          perPerspectiveThemeCounts[key] = {};
+        }
+        perPerspectiveThemeCounts[key][laneKey] =
+          (perPerspectiveThemeCounts[key][laneKey] ?? 0) + 1;
+      });
+    });
+
+    const buckets: Record<string, IndexedPerspective[]> = {};
+    rows.forEach((row) => {
+      const counts = perPerspectiveThemeCounts[row.p.perspective_id] ?? {};
+      let bestLane = "unmapped";
+      let bestCount = -1;
+      laneOrder.forEach((laneKey) => {
+        const score = counts[laneKey] ?? 0;
+        if (score > bestCount) {
+          bestCount = score;
+          bestLane = laneKey;
+        }
+      });
+      if (bestCount <= 0) {
+        bestLane = "unmapped";
+      }
+      if (!buckets[bestLane]) {
+        buckets[bestLane] = [];
+      }
+      buckets[bestLane].push(row);
+    });
+
+    const lanes: Array<{ laneKey: string; rows: IndexedPerspective[] }> = [];
+    laneOrder.forEach((laneKey) => {
+      if (buckets[laneKey]?.length) {
+        lanes.push({ laneKey, rows: buckets[laneKey] });
+      }
+    });
+    if (buckets.unmapped?.length) {
+      lanes.push({ laneKey: "unmapped", rows: buckets.unmapped });
+    }
+    return laneRowsToPositions(lanes);
+  }
+
+  async function autoArrangePerspectives(mode: ArrangeMode) {
+    const source = perspectivePool;
+    if (!source.length) return;
+    setErr(null);
+
+    const indexed = source.map((p, i) => ({ p, i }));
+    const positionById =
+      mode === "theme"
+        ? buildThemeArrangePositions(indexed)
+        : buildToolArrangePositions(indexed);
+    const nextPool = source.map((p) => ({
+      ...p,
+      position: positionById[p.perspective_id] ?? p.position ?? { x: 0, y: 0 },
+    }));
+
+    setPerspectivePool(nextPool);
+    if (!explorationActive) {
+      setSession((prev) => ({
+        ...prev,
+        perspectives: prev.perspectives.map((p) => ({
+          ...p,
+          position: positionById[p.perspective_id] ?? p.position ?? { x: 0, y: 0 },
+        })),
+      }));
+    }
+
+    setLastArrangeLabel(mode === "theme" ? "By Theme" : "By Tool");
+    if (explorationActive) return;
+
+    setLoading("arrange");
+    try {
+      let latest: SessionDetail | null = null;
+      for (const p of nextPool) {
+        const nextPos = p.position ?? { x: 0, y: 0 };
+        latest = await updatePerspective(sessionId, p.perspective_id, {
+          position: nextPos,
+        });
+      }
+      if (latest) {
+        setSession(latest);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setLoading(null);
+    }
   }
 
   const displayedPerspectives = useMemo(() => {
@@ -1346,6 +1541,11 @@ export function SessionJourney({
             perspectives={displayedPerspectives}
             proposals={ghostProposals}
             loading={loading !== null}
+            requiresOpenAI={creativeAi !== "openai"}
+            arrangeMode={arrangeMode}
+            lastArrangeLabel={lastArrangeLabel}
+            onArrangeModeChange={setArrangeMode}
+            onAutoArrange={(mode) => void autoArrangePerspectives(mode)}
             onAskSuggestions={() => void runAskSuggestions()}
             onPerspectiveMove={(id, position) => void onPerspectiveMove(id, position)}
             onGhostMove={onGhostMove}

@@ -135,6 +135,10 @@ class Perspective(BaseModel):
         default=False,
         description="Ephemeral ghost/proposal flag for frontend rendering.",
     )
+    approved_from_ghost: bool = Field(
+        default=False,
+        description="Persisted marker indicating this card originated from an approved ghost proposal.",
+    )
 
     @model_validator(mode="after")
     def _sync_text_description(self) -> Perspective:
@@ -355,6 +359,7 @@ class PerspectiveUpdateRequest(BaseModel):
     pool_excluded: bool | None = None
     position: dict[str, float] | None = None
     is_ghost: bool | None = None
+    approved_from_ghost: bool | None = None
 
 
 class ProposeChangesRequest(BaseModel):
@@ -384,6 +389,7 @@ class PerspectiveCreateRequest(BaseModel):
     why_interesting: str | None = Field(None, max_length=2000)
     position: dict[str, float] | None = None
     is_ghost: bool | None = None
+    approved_from_ghost: bool | None = None
 
 
 # Invention / Enlightenment

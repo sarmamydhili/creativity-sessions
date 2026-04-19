@@ -123,6 +123,7 @@ def _parse_perspective(raw: dict[str, Any]) -> Perspective:
         rank_score=rank_score,
         position={"x": x, "y": y},
         is_ghost=bool(raw.get("is_ghost", False)),
+        approved_from_ghost=bool(raw.get("approved_from_ghost", False)),
     )
 
 

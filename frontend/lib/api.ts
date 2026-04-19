@@ -228,6 +228,7 @@ export async function addPerspective(
         why_interesting?: string | null;
         position?: { x: number; y: number };
         is_ghost?: boolean;
+        approved_from_ghost?: boolean;
       } = "",
 ): Promise<SessionDetail> {
   const payload = typeof body === "string" ? { text: body } : { ...body };
@@ -252,6 +253,7 @@ export async function updatePerspective(
     pool_excluded?: boolean;
     position?: { x: number; y: number };
     is_ghost?: boolean;
+    approved_from_ghost?: boolean;
   },
 ): Promise<SessionDetail> {
   return api(

@@ -54,6 +54,7 @@ export interface Perspective {
   pool_excluded?: boolean;
   position?: { x: number; y: number };
   is_ghost?: boolean;
+  approved_from_ghost?: boolean;
 }
 
 export interface GhostProposal {

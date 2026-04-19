@@ -645,6 +645,8 @@ class CreativeWorkflowService:
                 merged["position"] = {"x": x, "y": y}
             if "is_ghost" in data and data["is_ghost"] is not None:
                 merged["is_ghost"] = bool(data["is_ghost"])
+            if "approved_from_ghost" in data and data["approved_from_ghost"] is not None:
+                merged["approved_from_ghost"] = bool(data["approved_from_ghost"])
             updated.append(merged)
         if not found:
             raise HTTPException(
@@ -668,6 +670,14 @@ class CreativeWorkflowService:
         session_id: str,
         body: ProposeChangesRequest,
     ) -> ProposeChangesResponse:
+        if not isinstance(self._provider, OpenAICreativeProvider):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Ask AI Agent for Suggestions requires OpenAI provider. "
+                    "Set OPENAI_API_KEY and AI_PROVIDER=openai, then restart backend."
+                ),
+            )
         doc = await self._repo.find_by_session_id(session_id)
         if doc is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -766,6 +776,11 @@ class CreativeWorkflowService:
             why_interesting=why_interesting,
             position=pos,
             is_ghost=bool(body.is_ghost) if body.is_ghost is not None else False,
+            approved_from_ghost=(
+                bool(body.approved_from_ghost)
+                if body.approved_from_ghost is not None
+                else False
+            ),
             selected=False,
         )
         existing = [x for x in (d.get("perspectives") or []) if isinstance(x, dict)]
