@@ -217,13 +217,25 @@ export async function commitPerspectives(
 
 export async function addPerspective(
   sessionId: string,
-  text = "",
+  body:
+    | string
+    | {
+        text?: string;
+        title?: string | null;
+        source_tool?: string | null;
+        spark_element?: string | null;
+        subtype?: string | null;
+        why_interesting?: string | null;
+        position?: { x: number; y: number };
+        is_ghost?: boolean;
+      } = "",
 ): Promise<SessionDetail> {
+  const payload = typeof body === "string" ? { text: body } : { ...body };
   return api(
     `/api/sessions/${encodeURIComponent(sessionId)}/perspectives/manual`,
     {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(payload),
     },
   );
 }

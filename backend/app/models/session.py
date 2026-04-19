@@ -377,6 +377,13 @@ class ProposeChangesResponse(BaseModel):
 
 class PerspectiveCreateRequest(BaseModel):
     text: str = Field(default="", max_length=20000)
+    title: str | None = Field(None, max_length=500)
+    source_tool: str | None = Field(None, max_length=120)
+    spark_element: str | None = Field(None, max_length=120)
+    subtype: str | None = Field(None, max_length=120)
+    why_interesting: str | None = Field(None, max_length=2000)
+    position: dict[str, float] | None = None
+    is_ghost: bool | None = None
 
 
 # Invention / Enlightenment

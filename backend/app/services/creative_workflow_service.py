@@ -737,11 +737,35 @@ class CreativeWorkflowService:
         d = _normalize_doc(doc)
         _require_minimum_step(doc, WorkflowStep.spark_generated)
         txt = body.text.strip()
+        source_tool = (body.source_tool or "user").strip() or "user"
+        spark_element = (body.spark_element or "user").strip() or "user"
+        title = body.title.strip() if isinstance(body.title, str) and body.title.strip() else None
+        subtype = body.subtype.strip() if isinstance(body.subtype, str) and body.subtype.strip() else None
+        why_interesting = (
+            body.why_interesting.strip()
+            if isinstance(body.why_interesting, str) and body.why_interesting.strip()
+            else None
+        )
+        pos = {"x": 0.0, "y": 0.0}
+        if isinstance(body.position, dict):
+            try:
+                pos["x"] = float(body.position.get("x", 0.0))
+            except (TypeError, ValueError):
+                pos["x"] = 0.0
+            try:
+                pos["y"] = float(body.position.get("y", 0.0))
+            except (TypeError, ValueError):
+                pos["y"] = 0.0
         p = Perspective(
             description=txt,
             text=txt,
-            source_tool="user",
-            spark_element="user",
+            title=title,
+            source_tool=source_tool,
+            spark_element=spark_element,
+            subtype=subtype,
+            why_interesting=why_interesting,
+            position=pos,
+            is_ghost=bool(body.is_ghost) if body.is_ghost is not None else False,
             selected=False,
         )
         existing = [x for x in (d.get("perspectives") or []) if isinstance(x, dict)]

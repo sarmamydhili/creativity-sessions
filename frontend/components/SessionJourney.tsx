@@ -941,18 +941,17 @@ export function SessionJourney({
     }
 
     try {
-      const beforeIds = new Set(session.perspectives.map((p) => p.perspective_id));
-      const s = await addPerspective(sessionId, bridgeCard.text || bridgeCard.description || "");
+      const s = await addPerspective(sessionId, {
+        text: bridgeCard.text || bridgeCard.description || "",
+        title: bridgeCard.title ?? null,
+        source_tool: bridgeCard.source_tool ?? "association",
+        spark_element: bridgeCard.spark_element ?? "parts",
+        subtype: bridgeCard.subtype ?? null,
+        why_interesting: bridgeCard.why_interesting ?? null,
+        position: pos,
+        is_ghost: false,
+      });
       setSession(s);
-      const created =
-        s.perspectives.find((p) => !beforeIds.has(p.perspective_id)) ?? null;
-      if (created) {
-        const s2 = await updatePerspective(sessionId, created.perspective_id, {
-          position: pos,
-          is_ghost: false,
-        });
-        setSession(s2);
-      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
       return;
