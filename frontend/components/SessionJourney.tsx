@@ -61,6 +61,7 @@ type IndexedPerspective = {
   p: Perspective;
   i: number;
 };
+type XY = { x: number; y: number };
 
 const TOOL_ORDER = ["analogy", "recategorization", "combination", "association"] as const;
 const LANE_X_STEP = 380;
@@ -606,6 +607,8 @@ export function SessionJourney({
   const [ghostProposals, setGhostProposals] = useState<GhostProposal[]>([]);
   const [arrangeMode, setArrangeMode] = useState<ArrangeMode>("tool");
   const [lastArrangeLabel, setLastArrangeLabel] = useState<string | null>(null);
+  const [layoutDirty, setLayoutDirty] = useState(false);
+  const dirtyLayoutPositionsRef = useRef<Record<string, XY>>({});
 
   useEffect(() => {
     void getHealth()
@@ -663,6 +666,8 @@ export function SessionJourney({
     setExplorationActive((initial.perspectives?.length ?? 0) === 0);
     setArrangeMode("tool");
     setLastArrangeLabel(null);
+    setLayoutDirty(false);
+    dirtyLayoutPositionsRef.current = {};
     setPoolSearch("");
     setPoolSort("order");
     setPoolSelectedOnly(false);
@@ -672,9 +677,22 @@ export function SessionJourney({
 
   useEffect(() => {
     if (!explorationActive) {
-      setPerspectivePool(session.perspectives);
+      setPerspectivePool((prev) => {
+        if (!layoutDirty) return session.perspectives;
+        const prevPosById: Record<string, XY> = {};
+        prev.forEach((p) => {
+          const pos = p.position;
+          if (pos) prevPosById[p.perspective_id] = pos;
+        });
+        return session.perspectives.map((p) => {
+          const dirtyPos = dirtyLayoutPositionsRef.current[p.perspective_id];
+          const fallbackPos = prevPosById[p.perspective_id];
+          const keepPos = dirtyPos ?? fallbackPos;
+          return keepPos ? { ...p, position: keepPos } : p;
+        });
+      });
     }
-  }, [session.perspectives, explorationActive, session.session_id]);
+  }, [session.perspectives, explorationActive, session.session_id, layoutDirty]);
 
   async function run<T>(key: string, fn: () => Promise<T>) {
     setErr(null);
@@ -769,10 +787,10 @@ export function SessionJourney({
   }
 
   function patchSessionPerspective(pid: string, patch: Partial<Perspective>) {
+    setPerspectivePool((prev) =>
+      prev.map((x) => (x.perspective_id === pid ? { ...x, ...patch } : x)),
+    );
     if (explorationActive) {
-      setPerspectivePool((prev) =>
-        prev.map((x) => (x.perspective_id === pid ? { ...x, ...patch } : x)),
-      );
       return;
     }
     setSession((s) => ({
@@ -888,6 +906,8 @@ export function SessionJourney({
         previewOnly: true,
       });
       setPerspectivePool(res.perspectives);
+      dirtyLayoutPositionsRef.current = {};
+      setLayoutDirty(false);
       setExplorationActive(true);
       setLastPreviewRecommended(res.recommended_perspective ?? null);
     } catch (e) {
@@ -908,6 +928,8 @@ export function SessionJourney({
       });
       setSession(s);
       setPerspectivePool(s.perspectives);
+      dirtyLayoutPositionsRef.current = {};
+      setLayoutDirty(false);
       setExplorationActive(false);
       setLastPreviewRecommended(null);
     } catch (e) {
@@ -947,14 +969,11 @@ export function SessionJourney({
     perspectiveId: string,
     position: { x: number; y: number },
   ) {
-    patchSessionPerspective(perspectiveId, { position });
-    if (explorationActive) return;
-    try {
-      const s = await updatePerspective(sessionId, perspectiveId, { position });
-      setSession(s);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Error");
+    if (!explorationActive) {
+      dirtyLayoutPositionsRef.current[perspectiveId] = position;
+      setLayoutDirty(true);
     }
+    patchSessionPerspective(perspectiveId, { position });
   }
 
   function onGhostMove(proposalId: string, position: { x: number; y: number }) {
@@ -1134,28 +1153,52 @@ export function SessionJourney({
           position: positionById[p.perspective_id] ?? p.position ?? { x: 0, y: 0 },
         })),
       }));
+      nextPool.forEach((p) => {
+        dirtyLayoutPositionsRef.current[p.perspective_id] = p.position ?? { x: 0, y: 0 };
+      });
+      setLayoutDirty(true);
     }
 
     setLastArrangeLabel(mode === "theme" ? "By Theme" : "By Tool");
-    if (explorationActive) return;
+  }
 
-    setLoading("arrange");
+  function handleArrangeModeChange(mode: ArrangeMode) {
+    setArrangeMode(mode);
+    void autoArrangePerspectives(mode);
+  }
+
+  async function saveLayoutChanges() {
+    if (explorationActive || !layoutDirty) return;
+    const dirtyEntries = Object.entries(dirtyLayoutPositionsRef.current);
+    if (!dirtyEntries.length) {
+      setLayoutDirty(false);
+      return;
+    }
+    setErr(null);
+    setLoading("layout-save");
     try {
       let latest: SessionDetail | null = null;
-      for (const p of nextPool) {
-        const nextPos = p.position ?? { x: 0, y: 0 };
-        latest = await updatePerspective(sessionId, p.perspective_id, {
-          position: nextPos,
-        });
+      for (const [pid, pos] of dirtyEntries) {
+        latest = await updatePerspective(sessionId, pid, { position: pos });
       }
       if (latest) {
         setSession(latest);
+        setPerspectivePool(latest.perspectives);
       }
+      dirtyLayoutPositionsRef.current = {};
+      setLayoutDirty(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
     } finally {
       setLoading(null);
     }
+  }
+
+  function discardLayoutChanges() {
+    if (explorationActive || !layoutDirty) return;
+    setPerspectivePool(session.perspectives);
+    dirtyLayoutPositionsRef.current = {};
+    setLayoutDirty(false);
   }
 
   const displayedPerspectives = useMemo(() => {
@@ -1542,10 +1585,13 @@ export function SessionJourney({
             proposals={ghostProposals}
             loading={loading !== null}
             requiresOpenAI={creativeAi !== "openai"}
+            showLayoutActions={!explorationActive}
+            layoutDirty={layoutDirty}
+            onSaveLayout={() => void saveLayoutChanges()}
+            onDiscardLayout={discardLayoutChanges}
             arrangeMode={arrangeMode}
             lastArrangeLabel={lastArrangeLabel}
-            onArrangeModeChange={setArrangeMode}
-            onAutoArrange={(mode) => void autoArrangePerspectives(mode)}
+            onArrangeModeChange={handleArrangeModeChange}
             onAskSuggestions={() => void runAskSuggestions()}
             onPerspectiveMove={(id, position) => void onPerspectiveMove(id, position)}
             onGhostMove={onGhostMove}

@@ -8,7 +8,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GhostProposal, Perspective } from "@/lib/types";
 import { GhostNode, type GhostNodeData } from "./GhostNode";
 import { PerspectiveNode, type PerspectiveNodeData } from "./PerspectiveNode";
@@ -18,10 +18,13 @@ type Props = {
   proposals: GhostProposal[];
   loading: boolean;
   requiresOpenAI?: boolean;
+  showLayoutActions?: boolean;
+  layoutDirty?: boolean;
+  onSaveLayout?: () => void;
+  onDiscardLayout?: () => void;
   arrangeMode: "tool" | "theme";
   lastArrangeLabel?: string | null;
   onArrangeModeChange: (mode: "tool" | "theme") => void;
-  onAutoArrange: (mode: "tool" | "theme") => void;
   onAskSuggestions: () => void;
   onPerspectiveMove: (id: string, position: { x: number; y: number }) => void;
   onGhostMove: (proposalId: string, position: { x: number; y: number }) => void;
@@ -46,10 +49,13 @@ export function PerspectiveCanvas({
   proposals,
   loading,
   requiresOpenAI = false,
+  showLayoutActions = false,
+  layoutDirty = false,
+  onSaveLayout,
+  onDiscardLayout,
   arrangeMode,
   lastArrangeLabel = null,
   onArrangeModeChange,
-  onAutoArrange,
   onAskSuggestions,
   onPerspectiveMove,
   onGhostMove,
@@ -59,6 +65,7 @@ export function PerspectiveCanvas({
 }: Props) {
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [rf, setRf] = useState<any>(null);
+  const didInitialFitRef = useRef(false);
 
   const perspectiveNodes: Node<PerspectiveNodeData>[] = useMemo(
     () =>
@@ -93,13 +100,6 @@ export function PerspectiveCanvas({
   );
 
   const nodes = useMemo(() => [...perspectiveNodes, ...ghostNodes], [perspectiveNodes, ghostNodes]);
-  const nodesKey = useMemo(
-    () =>
-      nodes
-        .map((n) => `${n.id}:${Math.round(n.position.x)}:${Math.round(n.position.y)}`)
-        .join("|"),
-    [nodes],
-  );
 
   const handleDragStop = (_evt: unknown, node: any) => {
     const pos = { x: node.position.x, y: node.position.y };
@@ -112,11 +112,13 @@ export function PerspectiveCanvas({
 
   useEffect(() => {
     if (!nodes.length || !rf) return;
+    if (didInitialFitRef.current) return;
     const t = window.setTimeout(() => {
       rf.fitView({ padding: 0.2, duration: 350 });
+      didInitialFitRef.current = true;
     }, 20);
     return () => window.clearTimeout(t);
-  }, [nodesKey, rf, nodes.length]);
+  }, [rf, nodes.length]);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
@@ -126,6 +128,11 @@ export function PerspectiveCanvas({
           <p className="text-xs text-slate-600">
             Drag cards to organize ideas. Ghost suggestions are preview-only until approved.
           </p>
+          {showLayoutActions && layoutDirty ? (
+            <p className="mt-1 text-[11px] font-medium text-amber-700">
+              You have unsaved layout changes.
+            </p>
+          ) : null}
           {lastArrangeLabel ? (
             <p className="mt-1 text-[11px] text-slate-500">Last arranged: {lastArrangeLabel}</p>
           ) : null}
@@ -136,12 +143,32 @@ export function PerspectiveCanvas({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {showLayoutActions ? (
+            <>
+              <button
+                type="button"
+                className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-100 disabled:opacity-50"
+                disabled={loading || !layoutDirty}
+                onClick={onDiscardLayout}
+              >
+                Discard Layout
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                disabled={loading || !layoutDirty}
+                onClick={onSaveLayout}
+              >
+                {loading ? "…" : "Save Layout"}
+              </button>
+            </>
+          ) : null}
           <label className="text-xs text-slate-600" htmlFor="auto-arrange-mode">
             Auto Arrange
           </label>
           <select
             id="auto-arrange-mode"
-            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+            className="rounded-md border border-slate-400 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-800 shadow-sm"
             value={arrangeMode}
             disabled={loading}
             onChange={(e) => onArrangeModeChange(e.target.value === "theme" ? "theme" : "tool")}
@@ -149,14 +176,6 @@ export function PerspectiveCanvas({
             <option value="tool">By Tool</option>
             <option value="theme">By Theme</option>
           </select>
-          <button
-            type="button"
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            disabled={loading}
-            onClick={() => onAutoArrange(arrangeMode)}
-          >
-            {loading ? "…" : "Auto Arrange"}
-          </button>
           <button
             type="button"
             className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
