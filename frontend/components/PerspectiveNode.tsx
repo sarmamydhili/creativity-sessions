@@ -7,11 +7,56 @@ type PerspectiveNodeData = {
   onToggleSelected: (id: string, checked: boolean) => void;
 };
 
+function parseRankScore(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number.parseFloat(String(value));
+  if (Number.isNaN(n)) return null;
+  return Math.max(0, Math.min(1, n));
+}
+
+function rankPercentLabel(score: number): string {
+  return `${Math.round(score * 100)}%`;
+}
+
+function RankStars({ score }: { score: number }) {
+  const s = Math.max(0, Math.min(1, score));
+  const pct = rankPercentLabel(s);
+  return (
+    <span
+      className="inline-flex items-center gap-px"
+      title={`${pct} — compared to other ideas in this batch (not a correctness score).`}
+      aria-label={`Rank about ${pct} within this batch`}
+    >
+      {[0, 1, 2, 3, 4].map((i) => {
+        const fill = Math.min(1, Math.max(0, s * 5 - i));
+        return (
+          <span
+            key={i}
+            className="relative inline-block h-[1.05em] w-[0.92em] select-none text-[13px] leading-none sm:text-sm"
+          >
+            <span className="absolute left-0 top-0 text-slate-300" aria-hidden>
+              ★
+            </span>
+            <span
+              className="absolute left-0 top-0 h-full overflow-hidden text-amber-500"
+              style={{ width: `${fill * 100}%` }}
+              aria-hidden
+            >
+              <span className="inline-block whitespace-nowrap">★</span>
+            </span>
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
   const p = data?.perspective;
   if (!p) return null;
   const text = p.text || p.description || "";
   const preview = text.length > 220 ? `${text.slice(0, 220)}…` : text;
+  const rank = parseRankScore(p.rank_score);
   const approvedGhost = Boolean(p.approved_from_ghost);
   const cardClass = approvedGhost
     ? "w-[320px] rounded-xl border border-violet-400 bg-violet-50/70 p-3 shadow-md ring-1 ring-violet-200"
@@ -30,6 +75,12 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
         </div>
       ) : null}
       {p.title ? <div className="mb-1 text-sm font-semibold text-slate-900">{p.title}</div> : null}
+      {rank != null ? (
+        <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
+          <span className="font-medium text-slate-500">Rank</span>
+          <RankStars score={rank} />
+        </div>
+      ) : null}
       <p className="text-sm text-slate-700">{preview}</p>
       <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
         <input
