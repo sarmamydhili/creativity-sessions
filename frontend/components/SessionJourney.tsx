@@ -31,7 +31,6 @@ import {
 import { CreativeLeverPanel } from "@/components/CreativeLeverPanel";
 import { EnlightenmentView } from "@/components/EnlightenmentView";
 import { InventionBuilder } from "@/components/InventionBuilder";
-import { InsightsTray } from "@/components/InsightsTray";
 import { PerspectiveCanvas } from "@/components/PerspectiveCanvas";
 import { SlidingOverlay } from "@/components/SlidingOverlay";
 import { SPARKRail } from "@/components/SPARKRail";
@@ -588,9 +587,6 @@ export function SessionJourney({
     () => (initial.perspectives?.length ?? 0) === 0,
   );
   const [poolSearch, setPoolSearch] = useState("");
-  const [poolSort, setPoolSort] = useState<
-    "order" | "short" | "long" | "selected"
-  >("order");
   const [poolSelectedOnly, setPoolSelectedOnly] = useState(false);
   const [lastPreviewRecommended, setLastPreviewRecommended] = useState<
     string | null
@@ -608,6 +604,7 @@ export function SessionJourney({
   const [arrangeMode, setArrangeMode] = useState<ArrangeMode>("tool");
   const [lastArrangeLabel, setLastArrangeLabel] = useState<string | null>(null);
   const [layoutDirty, setLayoutDirty] = useState(false);
+  const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
   const dirtyLayoutPositionsRef = useRef<Record<string, XY>>({});
 
   useEffect(() => {
@@ -667,9 +664,9 @@ export function SessionJourney({
     setArrangeMode("tool");
     setLastArrangeLabel(null);
     setLayoutDirty(false);
+    setLeftRailCollapsed(false);
     dirtyLayoutPositionsRef.current = {};
     setPoolSearch("");
-    setPoolSort("order");
     setPoolSelectedOnly(false);
     setLastPreviewRecommended(null);
     setGhostProposals([]);
@@ -819,6 +816,10 @@ export function SessionJourney({
     }
   }
 
+  function onPerspectiveTextChange(perspectiveId: string, text: string) {
+    patchSessionPerspective(perspectiveId, { text, description: text });
+  }
+
   async function togglePerspectiveField(
     p: Perspective,
     field: "selected" | "promising" | "pool_excluded",
@@ -848,13 +849,11 @@ export function SessionJourney({
 
   async function removePerspectiveCard(p: Perspective) {
     if (explorationActive) {
-      if (!window.confirm("Remove this perspective from your pool?")) return;
       setPerspectivePool((prev) =>
         prev.filter((x) => x.perspective_id !== p.perspective_id),
       );
       return;
     }
-    if (!window.confirm("Remove this perspective?")) return;
     setErr(null);
     setLoading(`pdel-${p.perspective_id}`);
     try {
@@ -868,26 +867,35 @@ export function SessionJourney({
   }
 
   async function addBlankPerspective() {
+    const starterCard: Perspective = {
+      perspective_id: newId(),
+      text: "New perspective: click and refine this angle.",
+      description: "New perspective: click and refine this angle.",
+      title: "New Card",
+      source_tool: "user",
+      spark_element: "parts",
+      selected: false,
+      promising: false,
+      pool_excluded: false,
+    };
+    setPoolSearch("");
+    setPoolSelectedOnly(false);
     if (explorationActive) {
       setPerspectivePool((prev) => [
         ...prev,
-        {
-          perspective_id: newId(),
-          text: "",
-          description: "",
-          source_tool: "user",
-          spark_element: "parts",
-          selected: false,
-          promising: false,
-          pool_excluded: false,
-        },
+        starterCard,
       ]);
       return;
     }
     setErr(null);
     setLoading("padd");
     try {
-      const s = await addPerspective(sessionId, "");
+      const s = await addPerspective(sessionId, {
+        text: starterCard.text,
+        title: starterCard.title ?? null,
+        source_tool: starterCard.source_tool,
+        spark_element: starterCard.spark_element,
+      });
       setSession(s);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
@@ -1213,24 +1221,9 @@ export function SessionJourney({
     if (poolSelectedOnly) {
       rows = rows.filter(({ p }) => p.selected);
     }
-    const out = [...rows];
-    if (poolSort === "short") {
-      out.sort(
-        (a, b) =>
-          (a.p.text || "").length - (b.p.text || "").length,
-      );
-    } else if (poolSort === "long") {
-      out.sort(
-        (a, b) =>
-          (b.p.text || "").length - (a.p.text || "").length,
-      );
-    } else if (poolSort === "selected") {
-      out.sort((a, b) => Number(b.p.selected) - Number(a.p.selected));
-    } else {
-      out.sort((a, b) => a.i - b.i);
-    }
-    return out.map(({ p }) => p);
-  }, [perspectivePool, poolSearch, poolSort, poolSelectedOnly]);
+    rows.sort((a, b) => a.i - b.i);
+    return rows.map(({ p }) => p);
+  }, [perspectivePool, poolSearch, poolSelectedOnly]);
 
   const perspectivesInPool = session.perspectives.filter((p) => !p.pool_excluded);
 
@@ -1270,12 +1263,9 @@ export function SessionJourney({
     (v || b)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const selectedForTray = explorationActive
+  const selectedForRail = explorationActive
     ? []
     : perspectivesInPool.filter((p) => p.selected);
-  const promisingForTray = explorationActive
-    ? []
-    : perspectivesInPool.filter((p) => p.promising);
 
   const mainColumn = (
     <div className="stack journey-main-col">
@@ -1521,37 +1511,6 @@ export function SessionJourney({
         ) : null}
 
         <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="min-w-[12rem] flex-1">
-            <label className="label text-xs text-slate-500" htmlFor="pool-search">
-              Filter by text
-            </label>
-            <input
-              id="pool-search"
-              type="search"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Search perspectives…"
-              value={poolSearch}
-              onChange={(e) => setPoolSearch(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label text-xs text-slate-500" htmlFor="pool-sort">
-              Sort
-            </label>
-            <select
-              id="pool-sort"
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              value={poolSort}
-              onChange={(e) =>
-                setPoolSort(e.target.value as typeof poolSort)
-              }
-            >
-              <option value="order">Original order</option>
-              <option value="short">Shortest first</option>
-              <option value="long">Longest first</option>
-              <option value="selected">Selected first</option>
-            </select>
-          </div>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -1584,6 +1543,8 @@ export function SessionJourney({
             perspectives={displayedPerspectives}
             proposals={ghostProposals}
             loading={loading !== null}
+            poolSearch={poolSearch}
+            onPoolSearchChange={setPoolSearch}
             requiresOpenAI={creativeAi !== "openai"}
             showLayoutActions={!explorationActive}
             layoutDirty={layoutDirty}
@@ -1594,6 +1555,13 @@ export function SessionJourney({
             onArrangeModeChange={handleArrangeModeChange}
             onAskSuggestions={() => void runAskSuggestions()}
             onPerspectiveMove={(id, position) => void onPerspectiveMove(id, position)}
+            onPerspectiveTextChange={onPerspectiveTextChange}
+            onPerspectiveTextSave={(id) => void savePerspectiveText(id)}
+            onDeletePerspective={(id) => {
+              const p = perspectivePool.find((x) => x.perspective_id === id);
+              if (!p) return;
+              void removePerspectiveCard(p);
+            }}
             onGhostMove={onGhostMove}
             onToggleSelected={(id, selected) => {
               const p = perspectivePool.find((x) => x.perspective_id === id);
@@ -1755,24 +1723,24 @@ export function SessionJourney({
   return (
     <div className="journey-page mx-auto w-full max-w-[1600px] px-2 pb-8 sm:px-4">
       <SPARKWorkspace
+        railCollapsed={leftRailCollapsed}
         rail={
           <SPARKRail
             activeKey={activeRail}
             onSelect={handleRailSelect}
             statusFor={(key) => sparkRailStatus(session, activeRail, key)}
+            progressPercent={workflowProgressPercent(session.current_step)}
+            selectedPerspectives={selectedForRail}
+            insights={session.insights ?? []}
+            invention={session.invention}
+            perspectiveDraftActive={explorationActive}
+            collapsed={leftRailCollapsed}
+            onToggleCollapsed={() => setLeftRailCollapsed((v) => !v)}
           />
         }
         center={mainColumn}
         tray={null}
-        footer={
-          <InsightsTray
-            session={session}
-            progressPercent={workflowProgressPercent(session.current_step)}
-            selectedPerspectives={selectedForTray}
-            promisingPerspectives={promisingForTray}
-            perspectiveDraftActive={explorationActive}
-          />
-        }
+        footer={null}
       />
     </div>
   );

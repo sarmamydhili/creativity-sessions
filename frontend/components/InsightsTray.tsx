@@ -4,7 +4,6 @@ import type { Perspective, SessionDetail } from "@/lib/types";
 
 export type InsightsTrayProps = {
   session: SessionDetail;
-  progressPercent: number;
   selectedPerspectives: Perspective[];
   promisingPerspectives: Perspective[];
   /** True while exploring a local perspective pool before commit. */
@@ -13,7 +12,6 @@ export type InsightsTrayProps = {
 
 export function InsightsTray({
   session,
-  progressPercent,
   selectedPerspectives,
   promisingPerspectives,
   perspectiveDraftActive = false,
@@ -32,19 +30,6 @@ export function InsightsTray({
           <strong> Generate insights</strong> above the invention section.
         </p>
       ) : null}
-      <div>
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-          Creativity progress
-        </p>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-spark-situation via-spark-pieces to-spark-actions transition-all duration-500"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-        <p className="mt-1 text-right text-xs text-slate-500">{progressPercent}%</p>
-      </div>
-
       {selectedPerspectives.length > 0 ? (
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">

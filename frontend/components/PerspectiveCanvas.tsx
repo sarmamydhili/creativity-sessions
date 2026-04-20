@@ -17,6 +17,8 @@ type Props = {
   perspectives: Perspective[];
   proposals: GhostProposal[];
   loading: boolean;
+  poolSearch: string;
+  onPoolSearchChange: (value: string) => void;
   requiresOpenAI?: boolean;
   showLayoutActions?: boolean;
   layoutDirty?: boolean;
@@ -27,6 +29,9 @@ type Props = {
   onArrangeModeChange: (mode: "tool" | "theme") => void;
   onAskSuggestions: () => void;
   onPerspectiveMove: (id: string, position: { x: number; y: number }) => void;
+  onPerspectiveTextChange: (id: string, text: string) => void;
+  onPerspectiveTextSave: (id: string) => void;
+  onDeletePerspective: (id: string) => void;
   onGhostMove: (proposalId: string, position: { x: number; y: number }) => void;
   onToggleSelected: (id: string, selected: boolean) => void;
   onApproveProposal: (proposalId: string) => void;
@@ -48,6 +53,8 @@ export function PerspectiveCanvas({
   perspectives,
   proposals,
   loading,
+  poolSearch,
+  onPoolSearchChange,
   requiresOpenAI = false,
   showLayoutActions = false,
   layoutDirty = false,
@@ -58,6 +65,9 @@ export function PerspectiveCanvas({
   onArrangeModeChange,
   onAskSuggestions,
   onPerspectiveMove,
+  onPerspectiveTextChange,
+  onPerspectiveTextSave,
+  onDeletePerspective,
   onGhostMove,
   onToggleSelected,
   onApproveProposal,
@@ -66,6 +76,8 @@ export function PerspectiveCanvas({
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [rf, setRf] = useState<any>(null);
   const didInitialFitRef = useRef(false);
+  const [miniMapOpen, setMiniMapOpen] = useState(true);
+  const [canvasInteractive, setCanvasInteractive] = useState(true);
 
   const perspectiveNodes: Node<PerspectiveNodeData>[] = useMemo(
     () =>
@@ -73,14 +85,17 @@ export function PerspectiveCanvas({
         id: p.perspective_id,
         type: "perspective",
         position: p.position ?? fallbackPosition(idx),
-        draggable: true,
+        draggable: canvasInteractive,
         zIndex: activeNodeId === p.perspective_id ? 500 : 100,
         data: {
           perspective: p,
           onToggleSelected,
+          onTextChange: onPerspectiveTextChange,
+          onTextSave: onPerspectiveTextSave,
+          onDelete: onDeletePerspective,
         },
       })),
-    [perspectives, activeNodeId, onToggleSelected],
+    [perspectives, activeNodeId, onToggleSelected, onPerspectiveTextChange, onPerspectiveTextSave, onDeletePerspective, canvasInteractive],
   );
   const ghostNodes: Node<GhostNodeData>[] = useMemo(
     () =>
@@ -88,7 +103,7 @@ export function PerspectiveCanvas({
         id: `proposal:${g.proposal_id}`,
         type: "ghost",
         position: g.card.position ?? { x: 120 + idx * 30, y: 120 + idx * 20 },
-        draggable: true,
+        draggable: canvasInteractive,
         zIndex: activeNodeId === `proposal:${g.proposal_id}` ? 520 : 120,
         data: {
           proposal: g,
@@ -96,7 +111,7 @@ export function PerspectiveCanvas({
           onReject: onRejectProposal,
         },
       })),
-    [proposals, activeNodeId, onApproveProposal, onRejectProposal],
+    [proposals, activeNodeId, onApproveProposal, onRejectProposal, canvasInteractive],
   );
 
   const nodes = useMemo(() => [...perspectiveNodes, ...ghostNodes], [perspectiveNodes, ghostNodes]);
@@ -125,6 +140,16 @@ export function PerspectiveCanvas({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">Perspective Canvas</h3>
+          <div className="mt-1 max-w-xs">
+            <input
+              id="pool-search"
+              type="search"
+              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs"
+              placeholder="Search perspectives…"
+              value={poolSearch}
+              onChange={(e) => onPoolSearchChange(e.target.value)}
+            />
+          </div>
           <p className="text-xs text-slate-600">
             Drag cards to organize ideas. Ghost suggestions are preview-only until approved.
           </p>
@@ -176,6 +201,16 @@ export function PerspectiveCanvas({
             <option value="tool">By Tool</option>
             <option value="theme">By Theme</option>
           </select>
+          <span
+            className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+              canvasInteractive
+                ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+                : "border border-amber-300 bg-amber-50 text-amber-700"
+            }`}
+            title={canvasInteractive ? "Cards can be dragged" : "Card dragging is locked"}
+          >
+            {canvasInteractive ? "Unlocked" : "Locked"}
+          </span>
           <button
             type="button"
             className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
@@ -187,11 +222,26 @@ export function PerspectiveCanvas({
           </button>
         </div>
       </div>
-      <div className="h-[calc(100vh-240px)] min-h-[560px] max-h-[980px] w-full">
+      <div className="relative h-[calc(100vh-240px)] min-h-[560px] max-h-[980px] w-full">
+        <button
+          type="button"
+          className="absolute bottom-3 right-3 z-50 rounded-full border border-slate-400 bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white shadow-md hover:bg-slate-800"
+          onClick={() => setMiniMapOpen((v) => !v)}
+          title={miniMapOpen ? "Minimize mini map" : "Restore mini map"}
+          aria-label={miniMapOpen ? "Minimize mini map" : "Restore mini map"}
+        >
+          {miniMapOpen ? "Map −" : "Map +"}
+        </button>
         <ReactFlow
           nodes={nodes}
           edges={[]}
           nodeTypes={nodeTypes}
+          nodesDraggable={canvasInteractive}
+          elementsSelectable
+          panOnDrag
+          zoomOnScroll
+          zoomOnPinch
+          zoomOnDoubleClick
           onNodeDragStop={handleDragStop}
           onNodeClick={(_e, node) => setActiveNodeId(node.id)}
           onPaneClick={() => setActiveNodeId(null)}
@@ -199,13 +249,20 @@ export function PerspectiveCanvas({
           fitView
           onInit={(instance) => setRf(instance)}
         >
-          <MiniMap
-            pannable
-            zoomable
-            nodeColor={(n) => (String(n.id).startsWith("proposal:") ? "#0ea5e9" : "#334155")}
-            maskColor="rgba(15,23,42,0.08)"
+          {miniMapOpen ? (
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={(n) => (String(n.id).startsWith("proposal:") ? "#0ea5e9" : "#334155")}
+              maskColor="rgba(15,23,42,0.08)"
+            />
+          ) : null}
+          <Controls
+            showInteractive
+            onInteractiveChange={(nextInteractive) =>
+              setCanvasInteractive(Boolean(nextInteractive))
+            }
           />
-          <Controls />
           <Background gap={18} color="#d4d4d8" />
         </ReactFlow>
       </div>

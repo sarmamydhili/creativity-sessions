@@ -1,10 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Perspective } from "@/lib/types";
 
 type PerspectiveNodeData = {
   perspective: Perspective;
   onToggleSelected: (id: string, checked: boolean) => void;
+  onTextChange: (id: string, text: string) => void;
+  onTextSave: (id: string) => void;
+  onDelete: (id: string) => void;
 };
 
 function parseRankScore(value: number | string | null | undefined): number | null {
@@ -55,7 +59,10 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
   const p = data?.perspective;
   if (!p) return null;
   const text = p.text || p.description || "";
-  const preview = text.length > 220 ? `${text.slice(0, 220)}…` : text;
+  const [localText, setLocalText] = useState(text);
+  useEffect(() => {
+    setLocalText(text);
+  }, [p.perspective_id, text]);
   const rank = parseRankScore(p.rank_score);
   const approvedGhost = Boolean(p.approved_from_ghost);
   const cardClass = approvedGhost
@@ -66,8 +73,20 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
     : "mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500";
   return (
     <div className={cardClass}>
-      <div className={sourceTextClass}>
-        {p.source_tool || "perspective"}
+      <div className="mb-1 flex items-start justify-between gap-2">
+        <div className={sourceTextClass}>{p.source_tool || "perspective"}</div>
+        <button
+          type="button"
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-rose-700 bg-rose-600 text-lg font-extrabold leading-none text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+          onClick={() => {
+            if (!window.confirm("Delete this perspective?")) return;
+            data.onDelete(p.perspective_id);
+          }}
+          title="Delete perspective"
+          aria-label="Delete perspective"
+        >
+          ×
+        </button>
       </div>
       {approvedGhost ? (
         <div className="mb-1 inline-flex rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
@@ -81,7 +100,17 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
           <RankStars score={rank} />
         </div>
       ) : null}
-      <p className="text-sm text-slate-700">{preview}</p>
+      <textarea
+        className="nodrag nowheel min-h-[84px] w-full resize-none rounded-md border border-slate-200 bg-white p-2 text-sm text-slate-700 outline-none ring-indigo-200 focus:ring"
+        value={localText}
+        onChange={(e) => {
+          setLocalText(e.target.value);
+        }}
+        onBlur={() => {
+          data.onTextChange(p.perspective_id, localText);
+          data.onTextSave(p.perspective_id);
+        }}
+      />
       <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
         <input
           type="checkbox"

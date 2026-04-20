@@ -5,9 +5,16 @@ type Props = {
   center: React.ReactNode;
   tray?: React.ReactNode | null;
   footer?: React.ReactNode;
+  railCollapsed?: boolean;
 };
 
-export function SPARKWorkspace({ rail, center, tray, footer }: Props) {
+export function SPARKWorkspace({
+  rail,
+  center,
+  tray,
+  footer,
+  railCollapsed = false,
+}: Props) {
   const hasTray = Boolean(tray);
   return (
     <div className="w-full">
@@ -15,8 +22,12 @@ export function SPARKWorkspace({ rail, center, tray, footer }: Props) {
         className={
           "mx-auto grid max-w-[1600px] gap-4 lg:items-start " +
           (hasTray
-            ? "lg:grid-cols-[minmax(200px,240px)_minmax(0,1fr)_minmax(260px,320px)]"
-            : "lg:grid-cols-[minmax(200px,240px)_minmax(0,1fr)]")
+            ? railCollapsed
+              ? "lg:grid-cols-[56px_minmax(0,1fr)_minmax(260px,320px)]"
+              : "lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)_minmax(260px,320px)]"
+            : railCollapsed
+              ? "lg:grid-cols-[56px_minmax(0,1fr)]"
+              : "lg:grid-cols-[minmax(260px,340px)_minmax(0,1fr)]")
         }
       >
         <div className="order-2 lg:order-1 lg:sticky lg:top-4">{rail}</div>
