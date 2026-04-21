@@ -7,16 +7,22 @@ import type { SessionSummary } from "@/lib/types";
 
 const TEMPLATES = [
   {
-    title: "Product discovery",
-    blurb: "Users struggle to adopt a new habit around your core job-to-be-done.",
+    title: "Bedroom refresh",
+    blurb: "Refresh my bedroom without spending much.",
+    mode: "quick",
+    project: "home_decor",
   },
   {
-    title: "Operations & waste",
-    blurb: "Reduce friction in a shared space where behavior and policy collide.",
+    title: "Birthday surprise",
+    blurb: "Plan a memorable birthday surprise with a clear timeline.",
+    mode: "guided",
+    project: "event_celebration",
   },
   {
-    title: "Learning experience",
-    blurb: "Learners face motivation and time constraints — find the lever moment.",
+    title: "Student study app",
+    blurb: "Create an app concept that helps students build better study habits.",
+    mode: "studio",
+    project: "product_app",
   },
 ] as const;
 
@@ -55,20 +61,20 @@ export function HomeDashboard() {
           S
         </div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-          SPARK
+          Creativity copilot
         </p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-          Transform Your Thinking
+          Simple on the surface, deep underneath
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-600">
-          A guided, playful loop: frame the problem with SPARK, remix ideas with
-          cognitive tools, then capture insights and inventions.
+          Start with quick ideas for everyday needs, switch to guided flow when you
+          want structure, and open Studio when you need full creative depth.
         </p>
         <Link
-          href="/sessions/new"
+          href="/sessions/new?mode=quick&project=personal_project"
           className="mt-8 inline-flex items-center justify-center rounded-2xl bg-spark-situation px-8 py-3.5 text-sm font-semibold text-white shadow-soft transition hover:opacity-95"
         >
-          Start new session
+          Start with quick ideas
         </Link>
       </header>
 
@@ -128,7 +134,7 @@ export function HomeDashboard() {
                 {t.blurb}
               </p>
               <Link
-                href={`/sessions/new?template=${encodeURIComponent(t.title)}`}
+                  href={`/sessions/new?template=${encodeURIComponent(t.title)}&mode=${encodeURIComponent(t.mode)}&project=${encodeURIComponent(t.project)}`}
                 className="mt-3 inline-block text-xs font-medium text-spark-pieces hover:underline"
               >
                 Use as inspiration →

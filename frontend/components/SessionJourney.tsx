@@ -36,7 +36,13 @@ import { SlidingOverlay } from "@/components/SlidingOverlay";
 import { SPARKRail } from "@/components/SPARKRail";
 import { SPARKWorkspace } from "@/components/SPARKWorkspace";
 import type { SparkRailKey } from "@/lib/spark-ui";
-import { sparkRailStatus, workflowProgressPercent } from "@/lib/spark-ui";
+import { sparkRailStatus, suggestedNextMove, workflowProgressPercent } from "@/lib/spark-ui";
+import {
+  deliverableLabel,
+  projectTypeLabel,
+  type ExperienceMode,
+  type ProjectType,
+} from "@/lib/experience";
 
 const SPARK_FIELDS = [
   "situation",
@@ -140,6 +146,32 @@ function normalizeVariations(
 
 function stepLabel(s: WorkflowStep): string {
   return s.replace(/_/g, " ");
+}
+
+function sparkPromptLabel(
+  field: (typeof SPARK_FIELDS)[number],
+  mode: ExperienceMode,
+): string {
+  if (mode === "studio") return SPARK_LABELS[field];
+  const guidedLabels: Record<(typeof SPARK_FIELDS)[number], string> = {
+    situation: "What's going on?",
+    parts: "What matters most?",
+    actions: "What can change?",
+    role: "Who is involved?",
+    key_goal: "What would a great outcome look like?",
+  };
+  return guidedLabels[field];
+}
+
+function projectRefinementChips(projectType: ProjectType): string[] {
+  const base = ["More like this", "Simpler", "More practical", "More original"];
+  if (projectType === "home_decor") return [...base, "Renter-friendly", "Budget-friendly"];
+  if (projectType === "event_celebration") return [...base, "More playful", "Kid-friendly"];
+  if (projectType === "routine_lifestyle") return [...base, "Keep it realistic", "Easier to stick with"];
+  if (projectType === "product_app") return [...base, "Push it further", "MVP first"];
+  if (projectType === "business_service") return [...base, "Cheaper to launch", "Clearer offer"];
+  if (projectType === "workflow_process") return [...base, "Faster handoff", "Less coordination"];
+  return [...base, "Push it further", "Keep it realistic"];
 }
 
 function isSessionDetail(x: unknown): x is SessionDetail {
@@ -254,20 +286,27 @@ const BASELINE_ADD_LABELS: Record<(typeof SPARK_FIELDS)[number], string> = {
 function SparkBaselineReadOnly({
   field,
   value,
+  addOpen,
+  addDraft,
+  onAddClick,
+  onAddDraftChange,
+  onAddSubmit,
+  onAddCancel,
+  onDeleteLine,
 }: {
   field: (typeof SPARK_FIELDS)[number];
   value: string;
+  addOpen: boolean;
+  addDraft: string;
+  onAddClick: () => void;
+  onAddDraftChange: (value: string) => void;
+  onAddSubmit: () => void;
+  onAddCancel: () => void;
+  onDeleteLine: (index: number) => void;
 }) {
   const lines = splitBaselineForDisplay(value, field);
   const empty =
     !lines.length || (lines.length === 1 && !(lines[0] ?? "").trim());
-  if (empty) {
-    return (
-      <p className="muted" style={{ margin: 0, fontSize: "0.875rem" }}>
-        (empty)
-      </p>
-    );
-  }
   return (
     <div
       className="spark-baseline-readonly"
@@ -278,25 +317,76 @@ function SparkBaselineReadOnly({
         userSelect: "text",
       }}
     >
-      {field === "parts" ? (
-        <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-          {lines.map((line, i) => (
-            <li key={i} style={{ marginBottom: "0.25rem" }}>
-              {line}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div
-          style={{
-            whiteSpace: "pre-wrap",
-            fontSize: "0.9rem",
-            lineHeight: 1.5,
-          }}
-        >
-          {lines.join("\n")}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-2 text-sm text-slate-800">
+        {empty ? (
+          <span className="text-xs text-slate-500">(empty)</span>
+        ) : (
+          lines.map((line, i) => (
+            <span
+              key={`${line}-${i}`}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1"
+            >
+              <span>{line}</span>
+              <button
+                type="button"
+                className="rounded-full border border-rose-300 bg-rose-50 px-1 text-[11px] font-bold leading-none text-rose-700 hover:bg-rose-100"
+                onClick={() => onDeleteLine(i)}
+                title="Delete item"
+                aria-label="Delete item"
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+        {!addOpen ? (
+          <button
+            type="button"
+            className="rounded-full border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+            onClick={onAddClick}
+            title={BASELINE_ADD_LABELS[field]}
+          >
+            +
+          </button>
+        ) : null}
+        {addOpen ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-300 bg-indigo-50 px-2 py-1">
+            <input
+              type="text"
+              value={addDraft}
+              onChange={(e) => onAddDraftChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAddSubmit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  onAddCancel();
+                }
+              }}
+              className="w-36 border-none bg-transparent p-0 text-xs text-slate-800 outline-none"
+              placeholder="Add item..."
+              autoFocus
+            />
+            <button
+              type="button"
+              className="rounded-full bg-emerald-600 px-1.5 text-[11px] font-bold text-white hover:bg-emerald-700"
+              onClick={onAddSubmit}
+              title="Add"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="rounded-full bg-slate-300 px-1.5 text-[11px] font-bold text-slate-700 hover:bg-slate-400"
+              onClick={onAddCancel}
+              title="Cancel"
+            >
+              ×
+            </button>
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -558,11 +648,15 @@ export function SessionJourney({
   initial,
   sessionId,
   onSessionChange,
+  experienceMode = "studio",
+  projectType = "product_app",
 }: {
   initial: SessionDetail;
   sessionId: string;
   /** Keeps parent header (title) in sync when problem/title is saved inside the journey. */
   onSessionChange?: (s: SessionDetail) => void;
+  experienceMode?: ExperienceMode;
+  projectType?: ProjectType;
 }) {
   const [session, setSession] = useState(initial);
   const [variationDraft, setVariationDraft] = useState(() =>
@@ -605,7 +699,18 @@ export function SessionJourney({
   const [lastArrangeLabel, setLastArrangeLabel] = useState<string | null>(null);
   const [layoutDirty, setLayoutDirty] = useState(false);
   const [leftRailCollapsed, setLeftRailCollapsed] = useState(false);
+  const [baselineAddOpen, setBaselineAddOpen] = useState<
+    Partial<Record<(typeof SPARK_FIELDS)[number], boolean>>
+  >({});
+  const [baselineAddDraft, setBaselineAddDraft] = useState<
+    Partial<Record<(typeof SPARK_FIELDS)[number], string>>
+  >({});
   const dirtyLayoutPositionsRef = useRef<Record<string, XY>>({});
+  const isQuick = experienceMode === "quick";
+  const isGuided = experienceMode === "guided";
+  const sparkCardsOpenByDefault = !isQuick;
+  const showGuidedTray = isQuick || isGuided;
+  const sessionGoalLabel = deliverableLabel(projectType);
 
   useEffect(() => {
     void getHealth()
@@ -762,6 +867,44 @@ export function SessionJourney({
     }, 500);
     return () => window.clearTimeout(h);
   }, [sparkOverlayDraft, sparkOverlayOpen]);
+
+  async function patchBaselineField(
+    field: (typeof SPARK_FIELDS)[number],
+    nextValue: string,
+  ) {
+    if (!session.spark_state) return;
+    const nextSpark = { ...sparkEdit, [field]: nextValue };
+    setSparkEdit(nextSpark);
+    setSparkOverlayDraft(nextSpark);
+    await run("patch", () =>
+      patchSpark(sessionId, {
+        [field]: nextValue,
+      }),
+    );
+  }
+
+  async function addBaselineItemInline(field: (typeof SPARK_FIELDS)[number]) {
+    const text = (baselineAddDraft[field] ?? "").trim();
+    if (!text) return;
+    const existing = splitBaselineForDisplay(sparkEdit[field] ?? "", field);
+    const nextLines = [...existing, text];
+    const nextValue =
+      field === "parts" ? joinPartsLines(nextLines) : joinEditableLines(nextLines);
+    await patchBaselineField(field, nextValue);
+    setBaselineAddDraft((prev) => ({ ...prev, [field]: "" }));
+    setBaselineAddOpen((prev) => ({ ...prev, [field]: false }));
+  }
+
+  async function deleteBaselineItem(
+    field: (typeof SPARK_FIELDS)[number],
+    index: number,
+  ) {
+    const existing = splitBaselineForDisplay(sparkEdit[field] ?? "", field);
+    const nextLines = existing.filter((_, i) => i !== index);
+    const nextValue =
+      field === "parts" ? joinPartsLines(nextLines) : joinEditableLines(nextLines);
+    await patchBaselineField(field, nextValue);
+  }
 
   function updateLine(
     element: string,
@@ -923,6 +1066,26 @@ export function SessionJourney({
     } finally {
       setLoading(null);
     }
+  }
+
+  function applyRefinementChip(chip: string) {
+    const next = { ...poolSettings };
+    const lower = chip.toLowerCase();
+    if (lower.includes("simpler") || lower.includes("realistic")) {
+      next.boldness = "low";
+      next.novelty = "low";
+    } else if (lower.includes("original") || lower.includes("push")) {
+      next.boldness = "high";
+      next.novelty = "high";
+    }
+    if (lower.includes("cheaper") || lower.includes("budget")) {
+      next.goal_priority = "cost_efficiency";
+    } else if (lower.includes("practical") || lower.includes("faster")) {
+      next.goal_priority = "reliability";
+    } else if (lower.includes("playful")) {
+      next.goal_priority = "comfort";
+    }
+    setPoolSettings(next);
   }
 
   async function runCommitPerspectives() {
@@ -1104,6 +1267,7 @@ export function SessionJourney({
       });
     });
 
+    const sparkLaneOrder = ["situation", "parts", "actions", "role", "key_goal"] as const;
     const buckets: Record<string, IndexedPerspective[]> = {};
     rows.forEach((row) => {
       const counts = perPerspectiveThemeCounts[row.p.perspective_id] ?? {};
@@ -1117,7 +1281,16 @@ export function SessionJourney({
         }
       });
       if (bestCount <= 0) {
-        bestLane = "unmapped";
+        const sparkKey = String(row.p.spark_element || "")
+          .toLowerCase()
+          .trim()
+          .replace("-", "_")
+          .replace(" ", "_");
+        if ((sparkLaneOrder as readonly string[]).includes(sparkKey)) {
+          bestLane = `spark:${sparkKey}`;
+        } else {
+          bestLane = "unmapped";
+        }
       }
       if (!buckets[bestLane]) {
         buckets[bestLane] = [];
@@ -1127,6 +1300,12 @@ export function SessionJourney({
 
     const lanes: Array<{ laneKey: string; rows: IndexedPerspective[] }> = [];
     laneOrder.forEach((laneKey) => {
+      if (buckets[laneKey]?.length) {
+        lanes.push({ laneKey, rows: buckets[laneKey] });
+      }
+    });
+    sparkLaneOrder.forEach((sparkKey) => {
+      const laneKey = `spark:${sparkKey}`;
       if (buckets[laneKey]?.length) {
         lanes.push({ laneKey, rows: buckets[laneKey] });
       }
@@ -1266,6 +1445,23 @@ export function SessionJourney({
   const selectedForRail = explorationActive
     ? []
     : perspectivesInPool.filter((p) => p.selected);
+  const refinementChips = projectRefinementChips(projectType);
+  const guidedTray = showGuidedTray ? (
+    <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        {isQuick ? "Quick guide" : "Guided creator"}
+      </p>
+      <h3 className="mt-1 text-sm font-semibold text-slate-900">
+        {projectTypeLabel(projectType)}
+      </h3>
+      <p className="mt-2 text-xs leading-relaxed text-slate-600">
+        {suggestedNextMove(session)}
+      </p>
+      <p className="mt-3 text-xs text-slate-500">
+        Target output: <strong>{sessionGoalLabel}</strong>
+      </p>
+    </aside>
+  ) : null;
 
   const mainColumn = (
     <div className="stack journey-main-col">
@@ -1287,8 +1483,8 @@ export function SessionJourney({
           {session.current_iteration} · {session.status}
         </p>
         <p className="muted" style={{ marginTop: "0.35rem" }}>
-          Describe the challenge you are working on. You can revise it anytime;
-          later steps use the latest saved version.
+          Describe what you want to create or improve. You can revise it anytime;
+          later steps use your latest version.
         </p>
         <div>
           <label className="label" htmlFor="session-title">
@@ -1326,34 +1522,34 @@ export function SessionJourney({
             )
           }
         >
-          {loading === "prob" ? "…" : "Save problem"}
+          {loading === "prob" ? "…" : "Save challenge"}
         </button>
       </section>
 
-      <details className="card stack open">
+      <details className="card stack" open={sparkCardsOpenByDefault}>
         <summary
           className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
           style={{ fontSize: "1.1rem" }}
         >
-          1. SPARK breakdown
+          1. Understand the challenge
         </summary>
         <div className="mt-3 stack">
         {!session.spark_state ? (
           <p className="muted">
-            Define your lens: Situation, Pieces, Actions, Role, Key goal. Generation
+            We will frame your challenge in five lenses behind the scenes. Generation
             runs on the server (
             {creativeAi === "openai"
               ? "OpenAI"
               : creativeAi === "mock"
                 ? "offline templates — add OPENAI_API_KEY for real LLM output"
                 : "checking…"}
-            ). After generation, this section shows your baseline read-only; edit
-            it in <strong>2. SPARK transformation</strong>.
+            ). After generation, this section shows your baseline read-only; you can
+            refine it in <strong>2. Explore fresh angles</strong>.
           </p>
         ) : (
           <p className="muted">
             Generated baseline (read-only). To change wording, use{" "}
-            <strong>2. SPARK transformation</strong> — the editors there update
+            <strong>2. Explore fresh angles</strong> — the editors there update
             this baseline for the session.
           </p>
         )}
@@ -1385,15 +1581,32 @@ export function SessionJourney({
             run("spark", () => generateSpark(sessionId, { extra_context: null }))
           }
         >
-          {loading === "spark" ? "…" : "Generate SPARK"}
+          {loading === "spark" ? "…" : "Generate challenge frame"}
         </button>
 
         {session.spark_state ? (
           <div className="stack">
             {SPARK_FIELDS.map((f) => (
               <div key={f} data-spark-anchor={f} data-spark-phase="baseline">
-                <div className="label">{SPARK_LABELS[f]}</div>
-                <SparkBaselineReadOnly field={f} value={sparkEdit[f] ?? ""} />
+                <div className="label">{sparkPromptLabel(f, experienceMode)}</div>
+                <SparkBaselineReadOnly
+                  field={f}
+                  value={sparkEdit[f] ?? ""}
+                  addOpen={Boolean(baselineAddOpen[f])}
+                  addDraft={baselineAddDraft[f] ?? ""}
+                  onAddClick={() =>
+                    setBaselineAddOpen((prev) => ({ ...prev, [f]: true }))
+                  }
+                  onAddDraftChange={(value) =>
+                    setBaselineAddDraft((prev) => ({ ...prev, [f]: value }))
+                  }
+                  onAddSubmit={() => void addBaselineItemInline(f)}
+                  onAddCancel={() => {
+                    setBaselineAddOpen((prev) => ({ ...prev, [f]: false }));
+                    setBaselineAddDraft((prev) => ({ ...prev, [f]: "" }));
+                  }}
+                  onDeleteLine={(idx) => void deleteBaselineItem(f, idx)}
+                />
               </div>
             ))}
           </div>
@@ -1401,18 +1614,17 @@ export function SessionJourney({
         </div>
       </details>
 
-      <details className="card stack open">
+      <details className="card stack" open={!isQuick}>
         <summary
           className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
           style={{ fontSize: "1.1rem" }}
         >
-          2. SPARK transformation
+          2. Explore fresh angles
         </summary>
         <div className="mt-3 stack">
           <p className="muted">
-            Use the sliding sandbox to iteratively edit SPARK with local shadow
-            state. AI preview refresh is debounced and does not persist until you
-            click commit.
+            Use the sliding sandbox to iteratively refine your challenge frame.
+            Preview refresh is debounced and does not persist until you click commit.
           </p>
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <button
@@ -1421,7 +1633,7 @@ export function SessionJourney({
               disabled={loading !== null || !session.spark_state}
               onClick={() => setSparkOverlayOpen(true)}
             >
-              Open Sliding Sandbox
+              Open angle sandbox
             </button>
             {overlayPreviewAt ? (
               <span className="muted text-xs">Preview updated at {overlayPreviewAt}</span>
@@ -1437,14 +1649,18 @@ export function SessionJourney({
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }} className="text-slate-900">
-              Perspective workspace
+              Idea board
             </h2>
             <p className="muted mt-1 max-w-3xl text-sm">
-              Tune boldness, novelty, and goal priority, then run <strong>one</strong> GenAI batch (up to 30 angles), then
-              filter, sort, and select here — all local until you continue. No
-              auto-generation when levers change. Role stakeholder lines are used to
-              spread perspectives across different lenses.
+              Tune boldness, novelty, and goal priority, then run <strong>one</strong>{" "}
+              AI batch (up to 30 directions). Filter, refine, and select here before
+              continuing. No auto-generation when controls change.
             </p>
+            {isQuick ? (
+              <p className="mt-1 text-xs font-medium text-indigo-700">
+                Quick mode keeps setup light; open Studio mode anytime for full depth.
+              </p>
+            ) : null}
           </div>
           {explorationActive ? (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
@@ -1461,6 +1677,21 @@ export function SessionJourney({
           value={poolSettings}
           onChange={setPoolSettings}
           disabled={loading !== null || perspectivesAiLocked}
+          refinementActions={
+            <div className="flex flex-wrap gap-2">
+              {refinementChips.slice(0, 8).map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50"
+                  disabled={loading !== null || perspectivesAiLocked}
+                  onClick={() => applyRefinementChip(chip)}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          }
         />
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1470,12 +1701,12 @@ export function SessionJourney({
             disabled={loading !== null || perspectivesAiLocked}
             title={
               perspectivesAiLocked
-                ? "Generate SPARK first."
-                : "One GenAI call — up to 30 perspectives in your browser only."
+                ? "Generate challenge frame first."
+                : "One AI call — up to 30 directions in your browser only."
             }
             onClick={() => void runGeneratePerspectives()}
           >
-            {loading === "persp-gen" ? "…" : "Generate Perspectives"}
+            {loading === "persp-gen" ? "…" : "Generate ideas"}
           </button>
           <button
             type="button"
@@ -1483,7 +1714,7 @@ export function SessionJourney({
             disabled={loading !== null || perspectivesManualLocked}
             onClick={() => void addBlankPerspective()}
           >
-            {loading === "padd" ? "…" : "Add your own card"}
+            {loading === "padd" ? "…" : "Add your own idea"}
           </button>
           <span className="text-xs text-slate-500">
             {perspectivePool.length} in pool
@@ -1498,14 +1729,14 @@ export function SessionJourney({
             className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/80 px-3 py-2 text-sm text-indigo-950"
             role="status"
           >
-            <strong className="text-indigo-900">Model note: </strong>
+            <strong className="text-indigo-900">Suggested angle: </strong>
             <span className="whitespace-pre-wrap">{lastPreviewRecommended}</span>
           </div>
         ) : null}
 
         {session.last_recommended_perspective && !explorationActive ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <strong className="text-slate-800">Last saved recommendation: </strong>
+            <strong className="text-slate-800">Last saved suggestion: </strong>
             {session.last_recommended_perspective}
           </div>
         ) : null}
@@ -1526,14 +1757,14 @@ export function SessionJourney({
           role="note"
         >
           <p className="m-0">
-            <strong className="text-slate-900">About Rank</strong> — After you generate
-            a pool, each card can show <strong>Rank</strong> as filled stars (★). It
+            <strong className="text-slate-900">About Promising score</strong> — After you generate
+            ideas, each card can show a relative strength score as stars (★). It
             only compares ideas <em>in that batch</em>: how well the text lines up with
-            your problem and SPARK, how well it fits the boldness / novelty / goal you
+            your challenge and frame, how well it fits the boldness / novelty / goal you
             picked, plus a little boost for variety.{" "}
             <span className="text-slate-600">
-              Hover the stars to see the exact percentage. Use it to spot stronger
-              angles first; it is not a grade out of 100 for “correctness.”
+              Hover stars to see the exact percentage. Use it to spot stronger
+              directions first; it is not a test score.
             </span>
           </p>
         </div>
@@ -1585,17 +1816,16 @@ export function SessionJourney({
               : "Save pool to session"}
           </button>
           <p className="muted mt-2 text-xs">
-            Saves every card in your draft with its flags (× not in pool, ★ promising,
-            checkbox for insights). Re-open the session to see the same layout. Use
-            checkboxes so insights know which angles to prioritize (if none checked,
-            the top 10 by rank are used).
+            Saves every card in your draft with its flags (× not in board, ★ promising,
+            checkbox for patterns). Re-open the session to see the same layout.
+            If none are checked, the top 10 by score are used.
           </p>
         </div>
       </section>
 
       <SlidingOverlay
         open={sparkOverlayOpen}
-        title="SPARK Sliding Sandbox"
+        title="Angle Sandbox"
         onClose={() => setSparkOverlayOpen(false)}
         footer={
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1605,7 +1835,7 @@ export function SessionJourney({
               disabled={overlayPreviewLoading}
               onClick={() => void refreshOverlayPreview()}
             >
-              {overlayPreviewLoading ? "Refreshing…" : "Refresh Preview"}
+              {overlayPreviewLoading ? "Refreshing…" : "Refresh ideas"}
             </button>
             <button
               type="button"
@@ -1625,7 +1855,7 @@ export function SessionJourney({
                 })
               }
             >
-              Commit
+              Save edits
             </button>
           </div>
         }
@@ -1634,7 +1864,7 @@ export function SessionJourney({
           {SPARK_FIELDS.map((field) => (
             <div key={field} className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-300">
-                {SPARK_LABELS[field]}
+                {sparkPromptLabel(field, experienceMode)}
               </label>
               <textarea
                 rows={4}
@@ -1649,7 +1879,7 @@ export function SessionJourney({
         </div>
         <div className="mt-5 rounded-xl border border-slate-700 bg-slate-800/70 p-3">
           <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
-            Proposed (Preview)
+            Suggested preview
           </div>
           <div className="space-y-2">
             {Object.entries(overlayPreview)
@@ -1667,7 +1897,7 @@ export function SessionJourney({
               ))}
             {Object.keys(overlayPreview).length === 0 ? (
               <p className="text-xs text-slate-400">
-                Preview appears after a short typing pause (~500ms) or when you click Refresh Preview.
+                Preview appears after a short typing pause (~500ms) or when you click Refresh ideas.
               </p>
             ) : null}
           </div>
@@ -1678,12 +1908,11 @@ export function SessionJourney({
         id="insights-generate"
         className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
       >
-        <h2 className="text-lg font-semibold text-slate-900">Insights</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Find patterns</h2>
         <p className="muted text-sm text-slate-600">
-          Synthesize from checked perspectives. If none are checked, the server uses
-          the <strong>top 10</strong> in-pool cards by rank. Run this before you build
-          an invention. Insight synthesis also looks for stakeholder tensions and
-          tradeoffs when those lenses appear in your selected pool.
+          Synthesize from checked ideas. If none are checked, the server uses the{" "}
+          <strong>top 10</strong> cards by score. Run this before shaping your{" "}
+          {sessionGoalLabel.toLowerCase()}.
         </p>
         <button
           type="button"
@@ -1700,7 +1929,7 @@ export function SessionJourney({
           }
           onClick={() => run("ins", () => generateInsights(sessionId))}
         >
-          {loading === "ins" ? "…" : "Generate insights"}
+          {loading === "ins" ? "…" : "Find patterns"}
         </button>
       </section>
 
@@ -1709,12 +1938,14 @@ export function SessionJourney({
         loading={loading}
         inventionLocked={inventionLocked}
         inventionLockTitle={inventionLockTitle}
+        deliverableLabel={sessionGoalLabel}
         onGenerate={() => run("inv", () => generateInvention(sessionId))}
       />
 
       <EnlightenmentView
         session={session}
         loading={loading}
+        deliverableLabel={sessionGoalLabel}
         onGenerate={() => run("enl", () => generateEnlightenment(sessionId))}
       />
     </div>
@@ -1739,7 +1970,7 @@ export function SessionJourney({
           />
         }
         center={mainColumn}
-        tray={null}
+        tray={guidedTray}
         footer={null}
       />
     </div>

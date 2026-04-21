@@ -11,6 +11,7 @@ type Props = {
   value: PerspectivePoolSettings;
   onChange: (next: PerspectivePoolSettings) => void;
   disabled?: boolean;
+  refinementActions?: React.ReactNode;
 };
 
 function SectionTitle({
@@ -115,7 +116,12 @@ function TierFader({
  * Three global controls only: Boldness, Novelty, Goal priority.
  * The backend runs all four cognitive tools in one GenAI call.
  */
-export function CreativeLeverPanel({ value, onChange, disabled }: Props) {
+export function CreativeLeverPanel({
+  value,
+  onChange,
+  disabled,
+  refinementActions,
+}: Props) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-gradient-to-b from-white via-slate-50/30 to-slate-100/40 p-4 shadow-card ring-1 ring-slate-100">
       <div className="mb-4 flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
@@ -136,6 +142,10 @@ export function CreativeLeverPanel({ value, onChange, disabled }: Props) {
           Pool
         </span>
       </div>
+
+      {refinementActions ? (
+        <div className="mb-4 border-b border-slate-100 pb-3">{refinementActions}</div>
+      ) : null}
 
       <div className="flex flex-col gap-4">
         <div className="grid gap-3 sm:grid-cols-2">

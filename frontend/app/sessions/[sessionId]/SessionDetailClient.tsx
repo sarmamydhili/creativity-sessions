@@ -6,13 +6,42 @@ import { useRouter } from "next/navigation";
 import { deleteSession, getSession } from "@/lib/api";
 import type { SessionDetail } from "@/lib/types";
 import { SessionJourney } from "@/components/SessionJourney";
+import {
+  EXPERIENCE_OPTIONS,
+  parseExperienceMode,
+  parseProjectType,
+  projectTypeLabel,
+  type ExperienceMode,
+  type ProjectType,
+} from "@/lib/experience";
 
-export function SessionDetailClient({ sessionId }: { sessionId: string }) {
+export function SessionDetailClient({
+  sessionId,
+  initialMode,
+  initialProjectType,
+}: {
+  sessionId: string;
+  initialMode?: string;
+  initialProjectType?: string;
+}) {
   const router = useRouter();
   const [session, setSession] = useState<SessionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>(() =>
+    parseExperienceMode(initialMode),
+  );
+  const [projectType, setProjectType] = useState<ProjectType>(() =>
+    parseProjectType(initialProjectType),
+  );
+
+  useEffect(() => {
+    setExperienceMode(parseExperienceMode(initialMode));
+  }, [initialMode]);
+  useEffect(() => {
+    setProjectType(parseProjectType(initialProjectType));
+  }, [initialProjectType]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -77,7 +106,7 @@ export function SessionDetailClient({ sessionId }: { sessionId: string }) {
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-card sm:items-center sm:p-5">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            SPARK workspace
+            Creativity workspace
           </p>
           <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
             {session.title || "Untitled session"}
@@ -85,6 +114,25 @@ export function SessionDetailClient({ sessionId }: { sessionId: string }) {
           <p className="mt-1 text-xs text-slate-500 line-clamp-2 sm:text-sm">
             {session.problem_statement}
           </p>
+          <p className="mt-2 text-xs font-medium text-indigo-700">
+            {projectTypeLabel(projectType)}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {EXPERIENCE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setExperienceMode(opt.value)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                  experienceMode === opt.value
+                    ? "border-indigo-300 bg-indigo-50 text-indigo-800"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -112,6 +160,8 @@ export function SessionDetailClient({ sessionId }: { sessionId: string }) {
         initial={session}
         sessionId={session.session_id}
         onSessionChange={setSession}
+        experienceMode={experienceMode}
+        projectType={projectType}
       />
     </div>
   );

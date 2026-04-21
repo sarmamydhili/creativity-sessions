@@ -22,6 +22,29 @@ function rankPercentLabel(score: number): string {
   return `${Math.round(score * 100)}%`;
 }
 
+function normalizeTool(raw: string | null | undefined): string {
+  const t = (raw || "").toLowerCase().trim().replace("-", "_").replace(" ", "_");
+  if (t === "re_categorization") return "recategorization";
+  return t || "perspective";
+}
+
+function toolBadgeClass(tool: string): string {
+  switch (tool) {
+    case "analogy":
+      return "border border-blue-200 bg-blue-50 text-blue-700";
+    case "recategorization":
+      return "border border-violet-200 bg-violet-50 text-violet-700";
+    case "combination":
+      return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "association":
+      return "border border-amber-200 bg-amber-50 text-amber-700";
+    case "user":
+      return "border border-slate-200 bg-slate-100 text-slate-700";
+    default:
+      return "border border-cyan-200 bg-cyan-50 text-cyan-700";
+  }
+}
+
 function RankStars({ score }: { score: number }) {
   const s = Math.max(0, Math.min(1, score));
   const pct = rankPercentLabel(s);
@@ -65,16 +88,18 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
   }, [p.perspective_id, text]);
   const rank = parseRankScore(p.rank_score);
   const approvedGhost = Boolean(p.approved_from_ghost);
+  const normalizedTool = normalizeTool(p.source_tool);
   const cardClass = approvedGhost
     ? "w-[320px] rounded-xl border border-violet-400 bg-violet-50/70 p-3 shadow-md ring-1 ring-violet-200"
     : "w-[320px] rounded-xl border border-slate-300 bg-white p-3 shadow-md";
-  const sourceTextClass = approvedGhost
-    ? "mb-1 text-xs font-semibold uppercase tracking-wide text-violet-700"
-    : "mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500";
   return (
     <div className={cardClass}>
       <div className="mb-1 flex items-start justify-between gap-2">
-        <div className={sourceTextClass}>{p.source_tool || "perspective"}</div>
+        <div
+          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${toolBadgeClass(normalizedTool)}`}
+        >
+          {normalizedTool}
+        </div>
         <button
           type="button"
           className="flex h-8 w-8 items-center justify-center rounded-md border border-rose-700 bg-rose-600 text-lg font-extrabold leading-none text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"

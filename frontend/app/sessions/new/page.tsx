@@ -4,7 +4,7 @@ import { SessionForm } from "@/components/SessionForm";
 export default function NewSessionPage({
   searchParams,
 }: {
-  searchParams: { template?: string };
+  searchParams: { template?: string; mode?: string; project?: string };
 }) {
   return (
     <div className="mx-auto max-w-xl px-2 py-8">
@@ -18,13 +18,18 @@ export default function NewSessionPage({
         </Link>
       </p>
       <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-        New session
+        Start a new creative session
       </h1>
       <p className="mt-2 text-sm text-slate-600">
-        Name your challenge. You will land in the SPARK workspace to explore.
+        Tell us what you are working on, choose your working style, and we will guide
+        you from quick ideas to deeper studio exploration.
       </p>
       <div className="mt-8">
-        <SessionForm templateTitle={searchParams.template} />
+        <SessionForm
+          templateTitle={searchParams.template}
+          initialMode={searchParams.mode}
+          initialProjectType={searchParams.project}
+        />
       </div>
     </div>
   );

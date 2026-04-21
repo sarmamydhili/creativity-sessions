@@ -27,22 +27,22 @@ export function stepAtOrAfter(step: WorkflowStep, minimum: WorkflowStep): boolea
 export function suggestedNextMove(session: SessionDetail): string {
   const s = session.current_step;
   if (s === "session_created") {
-    return "Save your problem statement, then tap Generate SPARK to frame the challenge in five dimensions.";
+    return "Save your challenge, then generate a quick challenge frame to start exploring.";
   }
   if (s === "spark_generated") {
-    return "Optionally refine SPARK in transformation, then open Perspective workspace — Generate Perspectives, select, and Continue.";
+    return "Refine your frame if needed, then open the Idea board and generate directions.";
   }
   if (s === "variations_generated") {
-    return "Use Perspective workspace: Generate Perspectives (one batch), explore locally, then Continue with selected.";
+    return "Generate one idea batch, shortlist favorites, and save your board.";
   }
   if (s === "perspectives_generated") {
-    return "Generate insights from your selected perspectives, then build a solution sketch.";
+    return "Find patterns from your selected ideas, then shape your concept.";
   }
   if (s === "insights_generated") {
-    return "Build your invention concept, then extract learning for your library.";
+    return "Build your concept plan, then save reusable lessons.";
   }
   if (s === "invention_generated") {
-    return "Extract enlightenment to capture reusable principles from this session.";
+    return "Capture reusable lessons from this session.";
   }
   return "Start a new angle or explore another SPARK dimension.";
 }

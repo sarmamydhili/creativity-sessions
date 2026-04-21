@@ -135,11 +135,19 @@ export function PerspectiveCanvas({
     return () => window.clearTimeout(t);
   }, [rf, nodes.length]);
 
+  useEffect(() => {
+    if (!rf || !nodes.length || !lastArrangeLabel) return;
+    const t = window.setTimeout(() => {
+      rf.fitView({ padding: 0.2, duration: 350 });
+    }, 30);
+    return () => window.clearTimeout(t);
+  }, [rf, nodes.length, lastArrangeLabel]);
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
         <div>
-          <h3 className="text-sm font-semibold text-slate-900">Perspective Canvas</h3>
+          <h3 className="text-sm font-semibold text-slate-900">Studio canvas</h3>
           <div className="mt-1 max-w-xs">
             <input
               id="pool-search"
@@ -151,7 +159,10 @@ export function PerspectiveCanvas({
             />
           </div>
           <p className="text-xs text-slate-600">
-            Drag cards to organize ideas. Ghost suggestions are preview-only until approved.
+            Drag cards to organize ideas. AI suggested moves stay preview-only until you keep them.
+          </p>
+          <p className="text-[11px] text-slate-500">
+            Arrange by Theme groups by insight themes; if unavailable, it groups by SPARK dimension.
           </p>
           {showLayoutActions && layoutDirty ? (
             <p className="mt-1 text-[11px] font-medium text-amber-700">
@@ -163,7 +174,7 @@ export function PerspectiveCanvas({
           ) : null}
           {requiresOpenAI ? (
             <p className="mt-1 text-[11px] font-medium text-amber-700">
-              Ask Suggestions requires OpenAI provider.
+              Suggested moves require OpenAI provider.
             </p>
           ) : null}
         </div>
@@ -218,7 +229,7 @@ export function PerspectiveCanvas({
             title={requiresOpenAI ? "Requires OpenAI provider" : "Ask AI Agent for Suggestions"}
             onClick={onAskSuggestions}
           >
-            {loading ? "…" : "Ask Agent for Suggestions"}
+            {loading ? "…" : "Suggest next moves"}
           </button>
         </div>
       </div>
@@ -258,6 +269,8 @@ export function PerspectiveCanvas({
             />
           ) : null}
           <Controls
+            position="top-left"
+            className="!z-[70]"
             showInteractive
             onInteractiveChange={(nextInteractive) =>
               setCanvasInteractive(Boolean(nextInteractive))

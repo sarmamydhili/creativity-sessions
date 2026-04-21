@@ -5,10 +5,16 @@ import type { SessionDetail } from "@/lib/types";
 type Props = {
   session: SessionDetail;
   loading: string | null;
+  deliverableLabel?: string;
   onGenerate: () => void;
 };
 
-export function EnlightenmentView({ session, loading, onGenerate }: Props) {
+export function EnlightenmentView({
+  session,
+  loading,
+  deliverableLabel = "concept",
+  onGenerate,
+}: Props) {
   const en = session.enlightenment;
 
   return (
@@ -16,9 +22,10 @@ export function EnlightenmentView({ session, loading, onGenerate }: Props) {
       id="enlightenment-view"
       className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
     >
-      <h2 className="text-lg font-semibold text-slate-900">Enlightenment</h2>
+      <h2 className="text-lg font-semibold text-slate-900">What did we learn?</h2>
       <p className="muted text-sm text-slate-600">
-        Extract reusable principles and learning you can save to your library.
+        Extract reusable principles from this {deliverableLabel.toLowerCase()} so
+        you can reuse them later.
       </p>
       <button
         type="button"
@@ -26,7 +33,7 @@ export function EnlightenmentView({ session, loading, onGenerate }: Props) {
         disabled={loading !== null}
         onClick={onGenerate}
       >
-        {loading === "enl" ? "…" : "Extract learning"}
+        {loading === "enl" ? "…" : "Save reusable lessons"}
       </button>
       {en ? (
         <div className="mt-4 space-y-4 rounded-xl border border-rose-100 bg-rose-50/40 p-4">

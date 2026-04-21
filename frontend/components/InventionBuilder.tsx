@@ -6,6 +6,7 @@ type Props = {
   session: SessionDetail;
   loading: string | null;
   inventionLocked: boolean;
+  deliverableLabel?: string;
   /** Shown as native tooltip when the button is disabled (why it won’t run). */
   inventionLockTitle?: string;
   onGenerate: () => void;
@@ -15,6 +16,7 @@ export function InventionBuilder({
   session,
   loading,
   inventionLocked,
+  deliverableLabel = "Concept plan",
   inventionLockTitle,
   onGenerate,
 }: Props) {
@@ -26,10 +28,10 @@ export function InventionBuilder({
       id="invention-builder"
       className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
     >
-      <h2 className="text-lg font-semibold text-slate-900">Invention builder</h2>
+      <h2 className="text-lg font-semibold text-slate-900">Shape your {deliverableLabel.toLowerCase()}</h2>
       <p className="muted text-sm text-slate-600">
-        Merge ideas into a concrete invention concept. Run after you have
-        generated insights.
+        Merge ideas into a concrete direction. Run after you have generated
+        patterns.
       </p>
       <button
         type="button"
@@ -39,11 +41,11 @@ export function InventionBuilder({
           inventionLocked
             ? (inventionLockTitle ??
               "Generate insights first, then return here to build a solution.")
-            : "Propose one invention concept from your insights."
+            : "Propose one concrete direction from your selected patterns."
         }
         onClick={onGenerate}
       >
-        {loading === "inv" ? "…" : "Build solution"}
+        {loading === "inv" ? "…" : `Build ${deliverableLabel}`}
       </button>
       {inv ? (
         <div className="mt-4 space-y-3 rounded-xl border border-slate-100 bg-slate-50/50 p-4">
@@ -59,7 +61,7 @@ export function InventionBuilder({
       ) : null}
       {count > 1 ? (
         <p className="text-xs text-slate-500">
-          {count} invention(s) recorded (latest summarized above).
+          {count} saved versions recorded (latest summarized above).
         </p>
       ) : null}
     </section>
