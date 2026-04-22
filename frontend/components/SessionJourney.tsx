@@ -708,6 +708,7 @@ export function SessionJourney({
   const dirtyLayoutPositionsRef = useRef<Record<string, XY>>({});
   const isQuick = experienceMode === "quick";
   const isGuided = experienceMode === "guided";
+  const isStudio = experienceMode === "studio";
   const sparkCardsOpenByDefault = !isQuick;
   const showGuidedTray = isQuick || isGuided;
   const sessionGoalLabel = deliverableLabel(projectType);
@@ -1445,6 +1446,13 @@ export function SessionJourney({
   const selectedForRail = explorationActive
     ? []
     : perspectivesInPool.filter((p) => p.selected);
+  const baselineFields: Array<(typeof SPARK_FIELDS)[number]> =
+    isQuick || isGuided
+      ? SPARK_FIELDS.filter((f) => f !== "role")
+      : [...SPARK_FIELDS];
+  const roleLensFields: Array<(typeof SPARK_FIELDS)[number]> = isStudio
+    ? [...SPARK_FIELDS]
+    : ["role", "key_goal", "actions"];
   const refinementChips = projectRefinementChips(projectType);
   const guidedTray = showGuidedTray ? (
     <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
@@ -1544,13 +1552,13 @@ export function SessionJourney({
                 ? "offline templates — add OPENAI_API_KEY for real LLM output"
                 : "checking…"}
             ). After generation, this section shows your baseline read-only; you can
-            refine it in <strong>2. Explore fresh angles</strong>.
+            refine stakeholder viewpoints later in <strong>Role Lens Sandbox</strong>{" "}
+            after completing the Idea board.
           </p>
         ) : (
           <p className="muted">
             Generated baseline (read-only). To change wording, use{" "}
-            <strong>2. Explore fresh angles</strong> — the editors there update
-            this baseline for the session.
+            <strong>Role Lens Sandbox</strong> after Idea board management.
           </p>
         )}
         {creativeAi === "mock" ? (
@@ -1586,7 +1594,7 @@ export function SessionJourney({
 
         {session.spark_state ? (
           <div className="stack">
-            {SPARK_FIELDS.map((f) => (
+            {baselineFields.map((f) => (
               <div key={f} data-spark-anchor={f} data-spark-phase="baseline">
                 <div className="label">{sparkPromptLabel(f, experienceMode)}</div>
                 <SparkBaselineReadOnly
@@ -1609,36 +1617,13 @@ export function SessionJourney({
                 />
               </div>
             ))}
-          </div>
-        ) : null}
-        </div>
-      </details>
-
-      <details className="card stack" open={!isQuick}>
-        <summary
-          className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
-          style={{ fontSize: "1.1rem" }}
-        >
-          2. Explore fresh angles
-        </summary>
-        <div className="mt-3 stack">
-          <p className="muted">
-            Use the sliding sandbox to iteratively refine your challenge frame.
-            Preview refresh is debounced and does not persist until you click commit.
-          </p>
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-              disabled={loading !== null || !session.spark_state}
-              onClick={() => setSparkOverlayOpen(true)}
-            >
-              Open angle sandbox
-            </button>
-            {overlayPreviewAt ? (
-              <span className="muted text-xs">Preview updated at {overlayPreviewAt}</span>
+            {isQuick || isGuided ? (
+              <p className="mt-1 text-xs text-indigo-700">
+                Stakeholder lens appears after Idea board so you can shape ideas first.
+              </p>
             ) : null}
           </div>
+        ) : null}
         </div>
       </details>
 
@@ -1651,16 +1636,6 @@ export function SessionJourney({
             <h2 style={{ margin: 0, fontSize: "1.25rem" }} className="text-slate-900">
               Idea board
             </h2>
-            <p className="muted mt-1 max-w-3xl text-sm">
-              Tune boldness, novelty, and goal priority, then run <strong>one</strong>{" "}
-              AI batch (up to 30 directions). Filter, refine, and select here before
-              continuing. No auto-generation when controls change.
-            </p>
-            {isQuick ? (
-              <p className="mt-1 text-xs font-medium text-indigo-700">
-                Quick mode keeps setup light; open Studio mode anytime for full depth.
-              </p>
-            ) : null}
           </div>
           {explorationActive ? (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
@@ -1823,9 +1798,37 @@ export function SessionJourney({
         </div>
       </section>
 
+      <details className="card stack" open={!isQuick}>
+        <summary
+          className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
+          style={{ fontSize: "1.1rem" }}
+        >
+          3. Role Lens Sandbox
+        </summary>
+        <div className="mt-3 stack">
+          <p className="muted">
+            After shaping your Idea board, use this sandbox to compare how each
+            stakeholder views the end outcome. Changes stay draft until you save.
+          </p>
+          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+              disabled={loading !== null || !session.spark_state}
+              onClick={() => setSparkOverlayOpen(true)}
+            >
+              Open Role Lens Sandbox
+            </button>
+            {overlayPreviewAt ? (
+              <span className="muted text-xs">Preview updated at {overlayPreviewAt}</span>
+            ) : null}
+          </div>
+        </div>
+      </details>
+
       <SlidingOverlay
         open={sparkOverlayOpen}
-        title="Angle Sandbox"
+        title="Role Lens Sandbox"
         onClose={() => setSparkOverlayOpen(false)}
         footer={
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1835,7 +1838,7 @@ export function SessionJourney({
               disabled={overlayPreviewLoading}
               onClick={() => void refreshOverlayPreview()}
             >
-              {overlayPreviewLoading ? "Refreshing…" : "Refresh ideas"}
+              {overlayPreviewLoading ? "Refreshing…" : "Refresh role lens ideas"}
             </button>
             <button
               type="button"
@@ -1861,7 +1864,7 @@ export function SessionJourney({
         }
       >
         <div className="grid gap-4 md:grid-cols-2">
-          {SPARK_FIELDS.map((field) => (
+          {roleLensFields.map((field) => (
             <div key={field} className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
               <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-300">
                 {sparkPromptLabel(field, experienceMode)}
