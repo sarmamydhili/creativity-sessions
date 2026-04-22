@@ -7,6 +7,7 @@ import type {
   Perspective,
   PerspectivePoolSettings,
   SessionDetail,
+  StakeholderFeatureCard,
   VariationItem,
   WorkflowStep,
 } from "@/lib/types";
@@ -20,19 +21,20 @@ import {
   generateInvention,
   generatePerspectivePool,
   generateSpark,
+  generateStakeholderFeatureCards,
   generateVariations,
   getHealth,
   patchSession,
   patchSpark,
   proposeChanges,
   persistVariations,
+  selectStakeholderFeatureCards,
   updatePerspective,
 } from "@/lib/api";
 import { CreativeLeverPanel } from "@/components/CreativeLeverPanel";
 import { EnlightenmentView } from "@/components/EnlightenmentView";
 import { InventionBuilder } from "@/components/InventionBuilder";
 import { PerspectiveCanvas } from "@/components/PerspectiveCanvas";
-import { SlidingOverlay } from "@/components/SlidingOverlay";
 import { SPARKRail } from "@/components/SPARKRail";
 import { SPARKWorkspace } from "@/components/SPARKWorkspace";
 import type { SparkRailKey } from "@/lib/spark-ui";
@@ -398,7 +400,7 @@ const BASELINE_LINE_HINTS: Record<(typeof SPARK_FIELDS)[number], string> = {
     "One piece (noun / entity) per line. Edits here are your baseline for this dimension.",
   actions: "One line per action or verb phrase. Add, edit, or remove lines.",
   role:
-    "One line per stakeholder lens (e.g., primary user, operator, decision owner, safety/compliance).",
+    "One line per role lens (e.g., creator, end user, operator, decision owner).",
   key_goal: "One line per goal or success criterion.",
 };
 
@@ -685,15 +687,6 @@ export function SessionJourney({
   const [lastPreviewRecommended, setLastPreviewRecommended] = useState<
     string | null
   >(null);
-  const [sparkOverlayOpen, setSparkOverlayOpen] = useState(false);
-  const [sparkOverlayDraft, setSparkOverlayDraft] = useState<Record<string, string>>(
-    {},
-  );
-  const [overlayPreviewLoading, setOverlayPreviewLoading] = useState(false);
-  const [overlayPreviewAt, setOverlayPreviewAt] = useState<string | null>(null);
-  const [overlayPreview, setOverlayPreview] = useState<Record<string, VariationItem[]>>(
-    {},
-  );
   const [ghostProposals, setGhostProposals] = useState<GhostProposal[]>([]);
   const [arrangeMode, setArrangeMode] = useState<ArrangeMode>("tool");
   const [lastArrangeLabel, setLastArrangeLabel] = useState<string | null>(null);
@@ -747,13 +740,12 @@ export function SessionJourney({
         situation: sp.situation,
         parts: normalizeStoredParts(sp.parts ?? ""),
         actions: sp.actions,
-        role: sp.role,
+        role: isStudio ? sp.role : "Creator",
         key_goal: sp.key_goal,
       };
       setSparkEdit(next);
-      setSparkOverlayDraft(next);
     }
-  }, [session.spark_state]);
+  }, [session.spark_state, isStudio]);
 
   useEffect(() => {
     const saved = session.last_perspective_pool;
@@ -843,40 +835,12 @@ export function SessionJourney({
     }
   }
 
-  async function refreshOverlayPreview() {
-    if (!sparkOverlayOpen) return;
-    setOverlayPreviewLoading(true);
-    try {
-      const res = await generateVariations(
-        sessionId,
-        ["role", "key_goal"],
-        variationDraft,
-      );
-      setOverlayPreview(normalizeVariations(res.merged_variations));
-      setOverlayPreviewAt(new Date().toLocaleTimeString());
-    } catch {
-      // Keep overlay non-blocking; error banner for full workflow still handled elsewhere.
-    } finally {
-      setOverlayPreviewLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!sparkOverlayOpen) return;
-    const h = window.setTimeout(() => {
-      void refreshOverlayPreview();
-    }, 500);
-    return () => window.clearTimeout(h);
-  }, [sparkOverlayDraft, sparkOverlayOpen]);
-
   async function patchBaselineField(
     field: (typeof SPARK_FIELDS)[number],
     nextValue: string,
   ) {
     if (!session.spark_state) return;
-    const nextSpark = { ...sparkEdit, [field]: nextValue };
-    setSparkEdit(nextSpark);
-    setSparkOverlayDraft(nextSpark);
+    setSparkEdit((prev) => ({ ...prev, [field]: nextValue }));
     await run("patch", () =>
       patchSpark(sessionId, {
         [field]: nextValue,
@@ -1104,6 +1068,40 @@ export function SessionJourney({
       setLayoutDirty(false);
       setExplorationActive(false);
       setLastPreviewRecommended(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function runGenerateStakeholderFeatureCards() {
+    if (!isStudio || explorationActive) return;
+    setErr(null);
+    setLoading("sfc-gen");
+    try {
+      const res = await generateStakeholderFeatureCards(sessionId, { max_cards: 24 });
+      setSession(res.session);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function toggleStakeholderFeatureCard(featureId: string, selected: boolean) {
+    if (!isStudio) return;
+    const current = (session.stakeholder_feature_cards ?? []) as StakeholderFeatureCard[];
+    const selectedIds = new Set(
+      current.filter((c) => c.selected).map((c) => c.feature_id),
+    );
+    if (selected) selectedIds.add(featureId);
+    else selectedIds.delete(featureId);
+    setErr(null);
+    setLoading("sfc-select");
+    try {
+      const res = await selectStakeholderFeatureCards(sessionId, [...selectedIds]);
+      setSession(res.session);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Error");
     } finally {
@@ -1421,15 +1419,29 @@ export function SessionJourney({
     explorationActive ||
     perspectivesInPool.length === 0;
 
-  /** Enable whenever we have saved insights to build from (same gate as backend insight_texts). */
+  const stakeholderFeatureCards = (session.stakeholder_feature_cards ??
+    []) as StakeholderFeatureCard[];
+  const selectedStakeholderFeatureCards = stakeholderFeatureCards.filter((c) => c.selected);
+  const groupedStakeholderFeatureCards = useMemo(() => {
+    const grouped: Record<string, StakeholderFeatureCard[]> = {};
+    stakeholderFeatureCards.forEach((card) => {
+      const key = (card.stakeholder || "Creator").trim() || "Creator";
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(card);
+    });
+    return grouped;
+  }, [stakeholderFeatureCards]);
+
+  /** Build can run from selected feature cards or generated insights. */
   const inventionLocked =
-    loading !== null || (session.insights?.length ?? 0) === 0;
+    loading !== null ||
+    ((session.insights?.length ?? 0) === 0 && selectedStakeholderFeatureCards.length === 0);
 
   const inventionLockTitle =
     loading !== null
       ? "Wait for the current action to finish."
-      : (session.insights?.length ?? 0) === 0
-        ? "Generate insights first — use “Generate insights” in the tray (works with all perspective cards if none are checked)."
+      : (session.insights?.length ?? 0) === 0 && selectedStakeholderFeatureCards.length === 0
+        ? "Generate insights or select stakeholder feature cards first."
         : undefined;
 
   function handleRailSelect(key: SparkRailKey) {
@@ -1450,9 +1462,6 @@ export function SessionJourney({
     isQuick || isGuided
       ? SPARK_FIELDS.filter((f) => f !== "role")
       : [...SPARK_FIELDS];
-  const roleLensFields: Array<(typeof SPARK_FIELDS)[number]> = isStudio
-    ? [...SPARK_FIELDS]
-    : ["role", "key_goal", "actions"];
   const refinementChips = projectRefinementChips(projectType);
   const guidedTray = showGuidedTray ? (
     <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
@@ -1552,13 +1561,12 @@ export function SessionJourney({
                 ? "offline templates — add OPENAI_API_KEY for real LLM output"
                 : "checking…"}
             ). After generation, this section shows your baseline read-only; you can
-            refine stakeholder viewpoints later in <strong>Role Lens Sandbox</strong>{" "}
-            after completing the Idea board.
+            generate stakeholder feature cards after completing the Idea board.
           </p>
         ) : (
           <p className="muted">
-            Generated baseline (read-only). To change wording, use{" "}
-            <strong>Role Lens Sandbox</strong> after Idea board management.
+            Generated baseline (read-only). Edit individual lines here as needed
+            before generating stakeholder feature cards.
           </p>
         )}
         {creativeAi === "mock" ? (
@@ -1619,7 +1627,7 @@ export function SessionJourney({
             ))}
             {isQuick || isGuided ? (
               <p className="mt-1 text-xs text-indigo-700">
-                Stakeholder lens appears after Idea board so you can shape ideas first.
+                Stakeholder feature cards appear after Idea board so you can shape ideas first.
               </p>
             ) : null}
           </div>
@@ -1798,114 +1806,92 @@ export function SessionJourney({
         </div>
       </section>
 
-      <details className="card stack" open={!isQuick}>
-        <summary
-          className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
-          style={{ fontSize: "1.1rem" }}
-        >
-          3. Role Lens Sandbox
-        </summary>
-        <div className="mt-3 stack">
-          <p className="muted">
-            After shaping your Idea board, use this sandbox to compare how each
-            stakeholder views the end outcome. Changes stay draft until you save.
+      {isStudio ? (
+        <section className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+          <h2 className="text-lg font-semibold text-slate-900">Stakeholder Feature Cards</h2>
+          <p className="muted text-sm text-slate-600">
+            Generate consolidated functional and technical feature cards from saved
+            perspectives, grouped by stakeholder.
           </p>
           <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               type="button"
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-              disabled={loading !== null || !session.spark_state}
-              onClick={() => setSparkOverlayOpen(true)}
+              disabled={loading !== null || explorationActive || session.perspectives.length === 0}
+              title={
+                explorationActive
+                  ? "Save your Idea board pool first."
+                  : session.perspectives.length === 0
+                    ? "Generate and save perspectives first."
+                    : "Generate stakeholder feature cards from saved perspectives."
+              }
+              onClick={() => void runGenerateStakeholderFeatureCards()}
             >
-              Open Role Lens Sandbox
+              {loading === "sfc-gen"
+                ? "Generating…"
+                : stakeholderFeatureCards.length > 0
+                  ? "Regenerate stakeholder feature cards"
+                  : "Generate stakeholder feature cards"}
             </button>
-            {overlayPreviewAt ? (
-              <span className="muted text-xs">Preview updated at {overlayPreviewAt}</span>
+            {selectedStakeholderFeatureCards.length > 0 ? (
+              <span className="text-xs text-slate-500">
+                {selectedStakeholderFeatureCards.length} selected for build context
+              </span>
             ) : null}
           </div>
-        </div>
-      </details>
 
-      <SlidingOverlay
-        open={sparkOverlayOpen}
-        title="Role Lens Sandbox"
-        onClose={() => setSparkOverlayOpen(false)}
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <button
-              type="button"
-              className="rounded-lg border border-slate-500 bg-slate-800 px-3 py-2 text-sm text-slate-100 hover:bg-slate-700"
-              disabled={overlayPreviewLoading}
-              onClick={() => void refreshOverlayPreview()}
-            >
-              {overlayPreviewLoading ? "Refreshing…" : "Refresh role lens ideas"}
-            </button>
-            <button
-              type="button"
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-              onClick={() =>
-                run("patch", () =>
-                  patchSpark(sessionId, {
-                    situation: sparkOverlayDraft.situation ?? "",
-                    parts: sparkOverlayDraft.parts ?? "",
-                    actions: sparkOverlayDraft.actions ?? "",
-                    role: sparkOverlayDraft.role ?? "",
-                    key_goal: sparkOverlayDraft.key_goal ?? "",
-                  }),
-                ).then(() => {
-                  setSparkEdit(sparkOverlayDraft);
-                  setSparkOverlayOpen(false);
-                })
-              }
-            >
-              Save edits
-            </button>
-          </div>
-        }
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          {roleLensFields.map((field) => (
-            <div key={field} className="rounded-xl border border-slate-700 bg-slate-800/60 p-3">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-300">
-                {sparkPromptLabel(field, experienceMode)}
-              </label>
-              <textarea
-                rows={4}
-                className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100"
-                value={sparkOverlayDraft[field] ?? ""}
-                onChange={(e) =>
-                  setSparkOverlayDraft((prev) => ({ ...prev, [field]: e.target.value }))
-                }
-              />
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 rounded-xl border border-slate-700 bg-slate-800/70 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">
-            Suggested preview
-          </div>
-          <div className="space-y-2">
-            {Object.entries(overlayPreview)
-              .filter(([, rows]) => Array.isArray(rows) && rows.length > 0)
-              .slice(0, 3)
-              .map(([k, rows]) => (
-                <div key={k}>
-                  <div className="text-xs font-medium text-slate-300">{k}</div>
-                  <ul className="list-disc space-y-1 pl-5 text-xs text-slate-200">
-                    {rows.slice(0, 3).map((r) => (
-                      <li key={r.variation_id}>{r.text}</li>
+          {stakeholderFeatureCards.length === 0 ? (
+            <p className="text-xs text-slate-500">
+              No feature cards yet. Save your perspective pool, then generate cards.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {Object.entries(groupedStakeholderFeatureCards).map(([stakeholder, cards]) => (
+                <div key={stakeholder} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <h3 className="text-sm font-semibold text-slate-900">{stakeholder}</h3>
+                  <div className="mt-2 space-y-2">
+                    {cards.map((card) => (
+                      <label
+                        key={card.feature_id}
+                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-2.5 hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={card.selected}
+                          onChange={(e) =>
+                            void toggleStakeholderFeatureCard(card.feature_id, e.target.checked)
+                          }
+                          disabled={loading !== null}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="m-0 text-sm font-semibold text-slate-900">{card.title}</p>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                              {card.feature_type}
+                            </span>
+                            {card.priority ? (
+                              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                                {card.priority}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-xs text-slate-700">{card.description}</p>
+                          {card.why_it_matters ? (
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Why it matters: {card.why_it_matters}
+                            </p>
+                          ) : null}
+                        </div>
+                      </label>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               ))}
-            {Object.keys(overlayPreview).length === 0 ? (
-              <p className="text-xs text-slate-400">
-                Preview appears after a short typing pause (~500ms) or when you click Refresh ideas.
-              </p>
-            ) : null}
-          </div>
-        </div>
-      </SlidingOverlay>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <section
         id="insights-generate"
@@ -1942,6 +1928,7 @@ export function SessionJourney({
         inventionLocked={inventionLocked}
         inventionLockTitle={inventionLockTitle}
         deliverableLabel={sessionGoalLabel}
+        selectedFeatureCardsCount={selectedStakeholderFeatureCards.length}
         onGenerate={() => run("inv", () => generateInvention(sessionId))}
       />
 

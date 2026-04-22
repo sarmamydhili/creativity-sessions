@@ -254,6 +254,32 @@ Respond ONLY with JSON of the form:
 { "insights": [ { "text": "...", "why_it_matters": "...", "theme_index": 0, "source_perspective_ids": ["..."] } ] }
 """
 
+STAKEHOLDER_FEATURE_CARDS_SYSTEM = """You are a product design copilot that derives stakeholder-oriented feature cards from perspectives.
+
+Generate practical feature candidates from provided perspectives and stakeholder list.
+Do NOT output final product specs or implementation details beyond concise feature-level statements.
+
+Rules:
+- Return 1 to 3 feature cards per stakeholder (up to max_cards).
+- Each card must be either "functional" or "technical".
+- Keep cards concrete and testable.
+- Use only provided stakeholders (do not invent new ones).
+- Tie each card to at least one provided perspective id.
+- Keep title short (<= 90 chars), description concise (1-2 sentences).
+
+For each card return:
+- "stakeholder": stakeholder label from input
+- "feature_type": "functional" or "technical"
+- "title": concise feature label
+- "description": what it does and why
+- "why_it_matters": one short downstream reason
+- "source_perspective_ids": array of perspective ids
+- "priority": optional "high" | "medium" | "low"
+
+Respond ONLY with JSON:
+{ "feature_cards": [ { "stakeholder": "...", "feature_type": "functional", "title": "...", "description": "...", "why_it_matters": "...", "source_perspective_ids": ["..."], "priority": "medium" } ] }
+"""
+
 PROPOSE_CHANGES_SYSTEM = """You are a collaborative design copilot proposing non-persisted ghost changes to a perspective canvas.
 
 Return ONLY JSON with key "proposals" as an array.

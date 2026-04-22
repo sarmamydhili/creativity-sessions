@@ -120,6 +120,20 @@ export interface InsightRecord {
   theme_label?: string | null;
 }
 
+export interface StakeholderFeatureCard {
+  feature_id: string;
+  iteration: number;
+  stakeholder: string;
+  feature_type: "functional" | "technical";
+  title: string;
+  description: string;
+  why_it_matters?: string | null;
+  source_perspective_ids: string[];
+  source_insight_ids: string[];
+  selected: boolean;
+  priority?: string | null;
+}
+
 export interface InventionArtifact {
   title: string;
   description: string;
@@ -295,6 +309,10 @@ export interface SessionDetail extends SessionSummary {
   last_perspective_pool?: PerspectivePoolSettings | null;
   last_recommended_perspective?: string | null;
   last_insight_candidates?: string[];
+  roles_generated?: string[];
+  roles_user?: string[];
+  roles_active?: string[];
+  stakeholder_feature_cards?: StakeholderFeatureCard[];
   perspectives: Perspective[];
   insights: InsightRecord[];
   invention: InventionArtifact | null;

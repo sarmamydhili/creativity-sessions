@@ -11,6 +11,7 @@ import type {
   VariationItem,
   InsightRecord,
   ProposeChangesResponse,
+  StakeholderFeatureCard,
 } from "./types";
 
 function baseUrl(): string {
@@ -84,6 +85,9 @@ export async function patchSession(
   body: {
     problem_statement?: string;
     title?: string | null;
+    roles_generated?: string[];
+    roles_user?: string[];
+    roles_active?: string[];
   },
 ): Promise<SessionDetail> {
   return api(`/api/sessions/${encodeURIComponent(sessionId)}`, {
@@ -318,6 +322,40 @@ export async function generateInsights(sessionId: string): Promise<{
   return api(`/api/sessions/${encodeURIComponent(sessionId)}/insights`, {
     method: "POST",
   });
+}
+
+export async function generateStakeholderFeatureCards(
+  sessionId: string,
+  body?: { max_cards?: number },
+): Promise<{
+  session: SessionDetail;
+  stakeholder_feature_cards: StakeholderFeatureCard[];
+}> {
+  return api(
+    `/api/sessions/${encodeURIComponent(sessionId)}/stakeholder-feature-cards/generate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        max_cards: body?.max_cards ?? 24,
+      }),
+    },
+  );
+}
+
+export async function selectStakeholderFeatureCards(
+  sessionId: string,
+  feature_ids: string[],
+): Promise<{
+  session: SessionDetail;
+  stakeholder_feature_cards: StakeholderFeatureCard[];
+}> {
+  return api(
+    `/api/sessions/${encodeURIComponent(sessionId)}/stakeholder-feature-cards/select`,
+    {
+      method: "POST",
+      body: JSON.stringify({ feature_ids }),
+    },
+  );
 }
 
 export async function generateInvention(sessionId: string): Promise<{

@@ -168,6 +168,22 @@ class InsightRecord(BaseModel):
     )
 
 
+class StakeholderFeatureCard(BaseModel):
+    """Stakeholder-oriented functional/technical feature candidate."""
+
+    feature_id: str = Field(default_factory=lambda: str(uuid4()))
+    iteration: int = 1
+    stakeholder: str = "Creator"
+    feature_type: Literal["functional", "technical"] = "functional"
+    title: str = ""
+    description: str = ""
+    why_it_matters: str | None = None
+    source_perspective_ids: list[str] = Field(default_factory=list)
+    source_insight_ids: list[str] = Field(default_factory=list)
+    selected: bool = False
+    priority: str | None = None
+
+
 class InventionArtifact(BaseModel):
     title: str = ""
     description: str = ""
@@ -214,6 +230,10 @@ class SessionDetail(SessionSummary):
     last_perspective_pool: PerspectivePoolSettings | None = None
     last_recommended_perspective: str | None = None
     last_insight_candidates: list[str] = Field(default_factory=list)
+    roles_generated: list[str] = Field(default_factory=list)
+    roles_user: list[str] = Field(default_factory=list)
+    roles_active: list[str] = Field(default_factory=list)
+    stakeholder_feature_cards: list[StakeholderFeatureCard] = Field(default_factory=list)
     perspectives: list[Perspective] = Field(default_factory=list)
     insights: list[InsightRecord] = Field(default_factory=list)
     invention: InventionArtifact | None = None
@@ -236,11 +256,22 @@ class SessionUpdateRequest(BaseModel):
 
     problem_statement: str | None = Field(None, min_length=1, max_length=10000)
     title: str | None = Field(None, max_length=500)
+    roles_generated: list[str] | None = None
+    roles_user: list[str] | None = None
+    roles_active: list[str] | None = None
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> SessionUpdateRequest:
-        if self.problem_statement is None and self.title is None:
-            raise ValueError("Provide at least one of problem_statement or title")
+        if (
+            self.problem_statement is None
+            and self.title is None
+            and self.roles_generated is None
+            and self.roles_user is None
+            and self.roles_active is None
+        ):
+            raise ValueError(
+                "Provide at least one of problem_statement, title, roles_generated, roles_user, or roles_active"
+            )
         return self
 
 
@@ -341,6 +372,19 @@ class PerspectiveSelectionResponse(BaseModel):
 class InsightsGenerateResponse(BaseModel):
     session: SessionDetail
     insights: list[InsightRecord]
+
+
+class StakeholderFeatureCardsGenerateRequest(BaseModel):
+    max_cards: int = Field(default=24, ge=4, le=64)
+
+
+class StakeholderFeatureCardsGenerateResponse(BaseModel):
+    session: SessionDetail
+    stakeholder_feature_cards: list[StakeholderFeatureCard] = Field(default_factory=list)
+
+
+class StakeholderFeatureCardSelectionRequest(BaseModel):
+    feature_ids: list[str] = Field(default_factory=list)
 
 
 class PerspectiveToggleRequest(BaseModel):

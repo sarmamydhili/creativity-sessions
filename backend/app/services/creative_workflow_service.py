@@ -31,6 +31,8 @@ from app.models.session import (
     SparkGenerateResponse,
     SparkState,
     SparkUpdateRequest,
+    StakeholderFeatureCard,
+    StakeholderFeatureCardsGenerateResponse,
     VariationItem,
     VariationsGenerateResponse,
     WorkflowStep,
@@ -90,6 +92,109 @@ def _split_spark_field(text: str) -> list[str]:
         return []
     parts = re.split(r"[\n;]|,\s*", str(text))
     return [p.strip() for p in parts if p.strip()]
+
+
+def _normalize_role_text(text: str) -> str:
+    return re.sub(r"\s+", " ", str(text or "").strip())
+
+
+def _sanitize_role_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        label = _normalize_role_text(str(item))
+        if not label:
+            continue
+        key = label.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(label)
+    return out
+
+
+def _heuristic_roles_from_spark_role(role_text: str) -> list[str]:
+    base = _split_spark_field(role_text or "")
+    if not base:
+        return ["Creator"]
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in base:
+        label = _normalize_role_text(raw)
+        if not label:
+            continue
+        key = label.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(label)
+    return cleaned or ["Creator"]
+
+
+def _build_role_persistence_update(d: dict[str, Any], spark_role_text: str) -> dict[str, Any]:
+    generated = _heuristic_roles_from_spark_role(spark_role_text)
+    user_roles = _sanitize_role_list(d.get("roles_user"))
+    active: list[str] = []
+    seen: set[str] = set()
+    for role in [*generated, *user_roles]:
+        key = role.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        active.append(role)
+    return {
+        "roles_generated": generated,
+        "roles_user": user_roles,
+        "roles_active": active,
+    }
+
+
+def _active_stakeholders_for_session(d: dict[str, Any]) -> list[str]:
+    roles_active = _sanitize_role_list(d.get("roles_active"))
+    if roles_active:
+        return roles_active
+    roles_generated = _sanitize_role_list(d.get("roles_generated"))
+    if roles_generated:
+        return roles_generated
+    return ["Creator"]
+
+
+def _parse_stored_feature_cards(raw: Any) -> list[StakeholderFeatureCard]:
+    if not isinstance(raw, list):
+        return []
+    out: list[StakeholderFeatureCard] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ftype = str(item.get("feature_type") or "functional").strip().lower()
+        if ftype not in ("functional", "technical"):
+            ftype = "functional"
+        out.append(
+            StakeholderFeatureCard(
+                feature_id=item.get("feature_id") or str(uuid4()),
+                iteration=int(item.get("iteration", 1)),
+                stakeholder=str(item.get("stakeholder") or "Creator").strip() or "Creator",
+                feature_type=ftype,  # type: ignore[arg-type]
+                title=str(item.get("title") or "").strip(),
+                description=str(item.get("description") or "").strip(),
+                why_it_matters=(str(item.get("why_it_matters") or "").strip() or None),
+                source_perspective_ids=[
+                    str(x).strip()
+                    for x in (item.get("source_perspective_ids") or [])
+                    if str(x).strip()
+                ],
+                source_insight_ids=[
+                    str(x).strip()
+                    for x in (item.get("source_insight_ids") or [])
+                    if str(x).strip()
+                ],
+                selected=bool(item.get("selected", False)),
+                priority=(str(item.get("priority") or "").strip() or None),
+            )
+        )
+    return out
 
 
 def _candidates_for_dimension(
@@ -379,6 +484,7 @@ class CreativeWorkflowService:
             "current_step": WorkflowStep.perspectives_generated.value,
             "current_iteration": next_iter,
             **set_extra,
+            **_build_role_persistence_update(d, spark.role),
         }
         out = await self._repo.append_history_and_set(session_id, hist, mongo_update)
         assert out is not None
@@ -476,6 +582,7 @@ class CreativeWorkflowService:
             "current_step": WorkflowStep.perspectives_generated.value,
             "current_iteration": next_iter,
             **set_extra,
+            **_build_role_persistence_update(d, spark.role),
         }
         out = await self._repo.append_history_and_set(session_id, hist, mongo_update)
         assert out is not None
@@ -519,10 +626,15 @@ class CreativeWorkflowService:
         if req.perspective_pool is not None:
             hist_payload["perspective_pool"] = req.perspective_pool.model_dump()
         hist = self._hist(HistoryEventKind.perspectives_generated, hist_payload)
+        spark_role_text = ""
+        spark_state_raw = d.get("spark_state")
+        if isinstance(spark_state_raw, dict):
+            spark_role_text = str(spark_state_raw.get("role") or "")
         mongo_update: dict[str, Any] = {
             "perspectives": [p.model_dump(mode="python") for p in normalized],
             "current_step": WorkflowStep.perspectives_generated.value,
             "current_iteration": next_iter,
+            **_build_role_persistence_update(d, spark_role_text),
         }
         if req.creative_levers is not None:
             mongo_update["last_creative_levers"] = req.creative_levers.model_dump(by_alias=True)
@@ -891,6 +1003,143 @@ class CreativeWorkflowService:
         assert out is not None
         return InsightsGenerateResponse(session=self._sessions.to_detail(out), insights=insight_records)
 
+    async def generate_stakeholder_feature_cards(
+        self,
+        session_id: str,
+        max_cards: int = 24,
+    ) -> StakeholderFeatureCardsGenerateResponse:
+        doc = await self._repo.find_by_session_id(session_id)
+        if doc is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        d = _normalize_doc(doc)
+        _require_minimum_step(doc, WorkflowStep.spark_generated)
+        if not d.get("spark_state"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="SPARK required before stakeholder feature cards",
+            )
+        perspectives = _load_perspectives(d)
+        if not perspectives:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Save perspectives first before generating stakeholder feature cards.",
+            )
+        in_pool = [p for p in perspectives if not p.pool_excluded]
+        if not in_pool:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one perspective must be in the pool before generating stakeholder feature cards.",
+            )
+        spark = SparkState(
+            **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
+        )
+        stakeholders = _active_stakeholders_for_session(d)
+        drafts = await self._provider.stakeholder_feature_cards_from_perspectives(
+            spark=spark,
+            perspectives=in_pool,
+            stakeholders=stakeholders,
+            problem_statement=str(d.get("problem_statement") or ""),
+            max_cards=max_cards,
+        )
+        next_iter = int(d.get("current_iteration", 1)) + 1
+        cards: list[StakeholderFeatureCard] = []
+        perspective_ids = {p.perspective_id for p in in_pool}
+        for item in drafts:
+            if not isinstance(item, dict):
+                continue
+            stakeholder = _normalize_role_text(str(item.get("stakeholder") or "Creator"))
+            if not stakeholder:
+                stakeholder = "Creator"
+            if stakeholder.lower() not in {x.lower() for x in stakeholders}:
+                continue
+            feature_type = str(item.get("feature_type") or "functional").strip().lower()
+            if feature_type not in ("functional", "technical"):
+                feature_type = "functional"
+            title = str(item.get("title") or "").strip()
+            description = str(item.get("description") or "").strip()
+            if not title or not description:
+                continue
+            source_pids = [
+                str(x).strip()
+                for x in (item.get("source_perspective_ids") or [])
+                if str(x).strip() and str(x).strip() in perspective_ids
+            ]
+            if not source_pids:
+                continue
+            priority = str(item.get("priority") or "").strip().lower()
+            if priority not in ("high", "medium", "low"):
+                priority = "medium"
+            cards.append(
+                StakeholderFeatureCard(
+                    iteration=next_iter,
+                    stakeholder=stakeholder,
+                    feature_type=feature_type,  # type: ignore[arg-type]
+                    title=title[:90],
+                    description=description[:400],
+                    why_it_matters=str(item.get("why_it_matters") or "").strip()[:240] or None,
+                    source_perspective_ids=source_pids,
+                    source_insight_ids=[],
+                    selected=False,
+                    priority=priority,
+                )
+            )
+            if len(cards) >= max(4, min(max_cards, 64)):
+                break
+        if not cards:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Feature-card generation returned no usable cards. Try again or adjust perspectives.",
+            )
+        hist = self._hist(
+            HistoryEventKind.user_note,
+            {"mode": "stakeholder_feature_cards_generated", "count": len(cards)},
+        )
+        out = await self._repo.append_history_and_set(
+            session_id,
+            hist,
+            {
+                "stakeholder_feature_cards": [c.model_dump(mode="python") for c in cards],
+                "current_iteration": next_iter,
+            },
+        )
+        assert out is not None
+        return StakeholderFeatureCardsGenerateResponse(
+            session=self._sessions.to_detail(out),
+            stakeholder_feature_cards=cards,
+        )
+
+    async def select_stakeholder_feature_cards(
+        self,
+        session_id: str,
+        feature_ids: list[str],
+    ) -> StakeholderFeatureCardsGenerateResponse:
+        doc = await self._repo.find_by_session_id(session_id)
+        if doc is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        d = _normalize_doc(doc)
+        cards = _parse_stored_feature_cards(d.get("stakeholder_feature_cards"))
+        if not cards:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Generate stakeholder feature cards first.",
+            )
+        chosen = {str(x).strip() for x in feature_ids if str(x).strip()}
+        updated = [c.model_copy(update={"selected": c.feature_id in chosen}) for c in cards]
+        hist = self._hist(
+            HistoryEventKind.user_note,
+            {"mode": "stakeholder_feature_cards_selected", "count": len(chosen)},
+        )
+        out = await self._repo.append_history_and_set(
+            session_id,
+            hist,
+            {"stakeholder_feature_cards": [c.model_dump(mode="python") for c in updated]},
+        )
+        assert out is not None
+        return StakeholderFeatureCardsGenerateResponse(
+            session=self._sessions.to_detail(out),
+            stakeholder_feature_cards=updated,
+        )
+
     async def generate_invention(self, session_id: str) -> InventionGenerateResponse:
         doc = await self._repo.find_by_session_id(session_id)
         if doc is None:
@@ -904,15 +1153,26 @@ class CreativeWorkflowService:
             )
         raw_insights = d.get("insights") or []
         insight_texts = _insight_texts_from(raw_insights)
-        if not insight_texts:
+        selected_feature_cards = [
+            c for c in _parse_stored_feature_cards(d.get("stakeholder_feature_cards")) if c.selected
+        ]
+        feature_texts = [
+            (
+                f"[Stakeholder: {c.stakeholder} | {c.feature_type}] {c.title}: {c.description}"
+                + (f" Why: {c.why_it_matters}" if c.why_it_matters else "")
+            )
+            for c in selected_feature_cards
+        ]
+        invention_inputs = insight_texts + feature_texts
+        if not invention_inputs:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Insights required before invention — generate insights first.",
+                detail="Generate insights or select stakeholder feature cards before building product.",
             )
         spark = SparkState(
             **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
         )
-        inv = await self._provider.invention_from_insights(spark=spark, insights=insight_texts)
+        inv = await self._provider.invention_from_insights(spark=spark, insights=invention_inputs)
         hist = self._hist(HistoryEventKind.invention_generated, {"title": inv.title})
         next_iter = int(d.get("current_iteration", 1)) + 1
         prior_inv = _parse_inventions_list(d.get("inventions"))

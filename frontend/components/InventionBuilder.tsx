@@ -7,6 +7,7 @@ type Props = {
   loading: string | null;
   inventionLocked: boolean;
   deliverableLabel?: string;
+  selectedFeatureCardsCount?: number;
   /** Shown as native tooltip when the button is disabled (why it won’t run). */
   inventionLockTitle?: string;
   onGenerate: () => void;
@@ -17,6 +18,7 @@ export function InventionBuilder({
   loading,
   inventionLocked,
   deliverableLabel = "Concept plan",
+  selectedFeatureCardsCount = 0,
   inventionLockTitle,
   onGenerate,
 }: Props) {
@@ -30,9 +32,15 @@ export function InventionBuilder({
     >
       <h2 className="text-lg font-semibold text-slate-900">Shape your {deliverableLabel.toLowerCase()}</h2>
       <p className="muted text-sm text-slate-600">
-        Merge ideas into a concrete direction. Run after you have generated
-        patterns.
+        Merge your selected context into a concrete direction. You can build from
+        insights and/or selected stakeholder feature cards.
       </p>
+      {selectedFeatureCardsCount > 0 ? (
+        <p className="text-xs text-slate-500">
+          {selectedFeatureCardsCount} stakeholder feature card
+          {selectedFeatureCardsCount === 1 ? "" : "s"} selected for build context.
+        </p>
+      ) : null}
       <button
         type="button"
         className="w-full max-w-xs cursor-pointer rounded-xl bg-spark-role py-2.5 text-sm font-semibold text-white shadow-soft disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-6"

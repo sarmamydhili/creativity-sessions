@@ -462,6 +462,55 @@ class CreativeMockProvider(CreativeProvider):
             },
         ]
 
+    async def stakeholder_feature_cards_from_perspectives(
+        self,
+        *,
+        spark: SparkState,
+        perspectives: list[Perspective],
+        stakeholders: list[str],
+        problem_statement: str = "",
+        max_cards: int = 24,
+    ) -> list[dict[str, Any]]:
+        _ = (spark, problem_statement)
+        if not perspectives or not stakeholders:
+            return []
+        cap = max(4, min(max_cards, 64))
+        out: list[dict[str, Any]] = []
+        for i, stakeholder in enumerate(stakeholders):
+            base = perspectives[i % len(perspectives)]
+            nxt = perspectives[(i + 1) % len(perspectives)]
+            out.append(
+                {
+                    "stakeholder": stakeholder,
+                    "feature_type": "functional",
+                    "title": f"{stakeholder}: adaptive hydration guidance",
+                    "description": (
+                        "Show personalized hydration recommendations based on context and current run status."
+                    ),
+                    "why_it_matters": "Keeps support useful without adding noisy interactions.",
+                    "source_perspective_ids": [base.perspective_id],
+                    "priority": "high",
+                }
+            )
+            if len(out) >= cap:
+                break
+            out.append(
+                {
+                    "stakeholder": stakeholder,
+                    "feature_type": "technical",
+                    "title": f"{stakeholder}: lightweight sync pipeline",
+                    "description": (
+                        "Maintain low-latency app-to-device sync for hydration events and recommendation state."
+                    ),
+                    "why_it_matters": "Reliable data flow is required before advanced behavior can be trusted.",
+                    "source_perspective_ids": [base.perspective_id, nxt.perspective_id],
+                    "priority": "medium",
+                }
+            )
+            if len(out) >= cap:
+                break
+        return out[:cap]
+
     async def propose_perspective_changes(
         self,
         *,

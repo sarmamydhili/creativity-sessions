@@ -22,6 +22,7 @@ from app.models.session import (
     SessionSummary,
     SessionUpdateRequest,
     SparkState,
+    StakeholderFeatureCard,
     VariationItem,
     WorkflowStep,
 )
@@ -77,7 +78,32 @@ def _normalize_doc(doc: dict[str, Any]) -> dict[str, Any]:
         d["last_recommended_perspective"] = None
     if "last_insight_candidates" not in d:
         d["last_insight_candidates"] = []
+    if "roles_generated" not in d or d["roles_generated"] is None:
+        d["roles_generated"] = []
+    if "roles_user" not in d or d["roles_user"] is None:
+        d["roles_user"] = []
+    if "roles_active" not in d or d["roles_active"] is None:
+        d["roles_active"] = []
+    if "stakeholder_feature_cards" not in d or d["stakeholder_feature_cards"] is None:
+        d["stakeholder_feature_cards"] = []
     return d
+
+
+def _sanitize_roles(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
 
 
 def _parse_perspective(raw: dict[str, Any]) -> Perspective:
@@ -188,6 +214,42 @@ def _parse_insights(raw: Any) -> list[InsightRecord]:
     return out
 
 
+def _parse_stakeholder_feature_cards(raw: Any) -> list[StakeholderFeatureCard]:
+    if not isinstance(raw, list):
+        return []
+    out: list[StakeholderFeatureCard] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        feature_type = str(item.get("feature_type") or "functional").strip().lower()
+        if feature_type not in ("functional", "technical"):
+            feature_type = "functional"
+        out.append(
+            StakeholderFeatureCard(
+                feature_id=item.get("feature_id") or str(uuid4()),
+                iteration=int(item.get("iteration", 1)),
+                stakeholder=str(item.get("stakeholder") or "Creator").strip() or "Creator",
+                feature_type=feature_type,  # type: ignore[arg-type]
+                title=str(item.get("title") or "").strip(),
+                description=str(item.get("description") or "").strip(),
+                why_it_matters=(str(item.get("why_it_matters") or "").strip() or None),
+                source_perspective_ids=[
+                    str(x).strip()
+                    for x in (item.get("source_perspective_ids") or [])
+                    if str(x).strip()
+                ],
+                source_insight_ids=[
+                    str(x).strip()
+                    for x in (item.get("source_insight_ids") or [])
+                    if str(x).strip()
+                ],
+                selected=bool(item.get("selected", False)),
+                priority=(str(item.get("priority") or "").strip() or None),
+            )
+        )
+    return out
+
+
 def _parse_invention(raw: Any) -> InventionArtifact | None:
     if raw is None:
         return None
@@ -248,6 +310,7 @@ def _doc_to_detail(doc: dict[str, Any]) -> SessionDetail:
         spark_state = SparkState(**{k: spark_raw.get(k, "") for k in SparkState.model_fields})
     perspectives = [_parse_perspective(p) for p in d.get("perspectives", []) if isinstance(p, dict)]
     insights = _parse_insights(d.get("insights"))
+    stakeholder_feature_cards = _parse_stakeholder_feature_cards(d.get("stakeholder_feature_cards"))
     invention = _parse_invention(d.get("invention"))
     inventions = _parse_inventions(d.get("inventions"))
     if not inventions and invention is not None:
@@ -292,6 +355,10 @@ def _doc_to_detail(doc: dict[str, Any]) -> SessionDetail:
         last_perspective_pool=last_perspective_pool,
         last_recommended_perspective=last_rec_str,
         last_insight_candidates=last_insight_candidates,
+        roles_generated=_sanitize_roles(d.get("roles_generated")),
+        roles_user=_sanitize_roles(d.get("roles_user")),
+        roles_active=_sanitize_roles(d.get("roles_active")),
+        stakeholder_feature_cards=stakeholder_feature_cards,
         perspectives=perspectives,
         insights=insights,
         invention=invention,
@@ -344,6 +411,10 @@ class SessionService:
             "spark_state": None,
             "variations": {},
             "tool_applications": [],
+            "roles_generated": [],
+            "roles_user": [],
+            "roles_active": [],
+            "stakeholder_feature_cards": [],
             "perspectives": [],
             "insights": [],
             "invention": None,
@@ -390,6 +461,12 @@ class SessionService:
             set_fields["problem_statement"] = str(data["problem_statement"]).strip()
         if "title" in data:
             set_fields["title"] = data["title"]
+        if "roles_generated" in data:
+            set_fields["roles_generated"] = _sanitize_roles(data.get("roles_generated"))
+        if "roles_user" in data:
+            set_fields["roles_user"] = _sanitize_roles(data.get("roles_user"))
+        if "roles_active" in data:
+            set_fields["roles_active"] = _sanitize_roles(data.get("roles_active"))
         hist = HistoryEntry(
             kind=HistoryEventKind.problem_edited,
             payload={"fields": list(data.keys())},

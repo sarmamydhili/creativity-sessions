@@ -23,6 +23,9 @@ from app.models.session import (
     ProposeChangesResponse,
     SparkGenerateRequest,
     SparkGenerateResponse,
+    StakeholderFeatureCardSelectionRequest,
+    StakeholderFeatureCardsGenerateRequest,
+    StakeholderFeatureCardsGenerateResponse,
     SparkUpdateRequest,
     VariationsGenerateRequest,
     VariationsGenerateResponse,
@@ -164,6 +167,30 @@ async def insights_generate(
     wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
 ) -> InsightsGenerateResponse:
     return await wf.generate_insights(session_id)
+
+
+@router.post(
+    "/{session_id}/stakeholder-feature-cards/generate",
+    response_model=StakeholderFeatureCardsGenerateResponse,
+)
+async def stakeholder_feature_cards_generate(
+    session_id: str,
+    body: StakeholderFeatureCardsGenerateRequest,
+    wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
+) -> StakeholderFeatureCardsGenerateResponse:
+    return await wf.generate_stakeholder_feature_cards(session_id, body.max_cards)
+
+
+@router.post(
+    "/{session_id}/stakeholder-feature-cards/select",
+    response_model=StakeholderFeatureCardsGenerateResponse,
+)
+async def stakeholder_feature_cards_select(
+    session_id: str,
+    body: StakeholderFeatureCardSelectionRequest,
+    wf: Annotated[CreativeWorkflowService, Depends(get_creative_workflow_service)],
+) -> StakeholderFeatureCardsGenerateResponse:
+    return await wf.select_stakeholder_feature_cards(session_id, body.feature_ids)
 
 
 @router.post("/{session_id}/propose-changes", response_model=ProposeChangesResponse)

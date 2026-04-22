@@ -94,6 +94,23 @@ class CreativeProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def stakeholder_feature_cards_from_perspectives(
+        self,
+        *,
+        spark: SparkState,
+        perspectives: list[Perspective],
+        stakeholders: list[str],
+        problem_statement: str = "",
+        max_cards: int = 24,
+    ) -> list[dict[str, Any]]:
+        """
+        Return structured stakeholder feature-card drafts:
+        stakeholder, feature_type, title, description, why_it_matters,
+        source_perspective_ids, priority.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     async def propose_perspective_changes(
         self,
         *,

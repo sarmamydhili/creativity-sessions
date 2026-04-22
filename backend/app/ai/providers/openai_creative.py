@@ -430,6 +430,74 @@ class OpenAICreativeProvider(CreativeProvider):
             )
         return out
 
+    async def stakeholder_feature_cards_from_perspectives(
+        self,
+        *,
+        spark: SparkState,
+        perspectives: list[Perspective],
+        stakeholders: list[str],
+        problem_statement: str = "",
+        max_cards: int = 24,
+    ) -> list[dict[str, Any]]:
+        if not perspectives or not stakeholders:
+            return []
+        system = prompt_templates.STAKEHOLDER_FEATURE_CARDS_SYSTEM
+        user = json.dumps(
+            {
+                "problem_statement": problem_statement,
+                "spark": spark.model_dump(),
+                "stakeholders": stakeholders,
+                "max_cards": max(4, min(max_cards, 64)),
+                "perspectives_reference": [p.model_dump() for p in perspectives],
+            },
+            ensure_ascii=False,
+        )
+        raw = await self._chat_json(system=system, user=user, temperature=0.5)
+        cards = raw.get("feature_cards")
+        if not isinstance(cards, list):
+            return []
+        out: list[dict[str, Any]] = []
+        allowed_stakeholders = {s.strip().lower(): s.strip() for s in stakeholders if s.strip()}
+        perspective_ids = {p.perspective_id for p in perspectives}
+        for item in cards:
+            if not isinstance(item, dict):
+                continue
+            stakeholder_raw = str(item.get("stakeholder") or "").strip()
+            stakeholder = allowed_stakeholders.get(stakeholder_raw.lower())
+            if not stakeholder:
+                continue
+            feature_type = str(item.get("feature_type") or "functional").strip().lower()
+            if feature_type not in ("functional", "technical"):
+                feature_type = "functional"
+            title = str(item.get("title") or "").strip()
+            description = str(item.get("description") or "").strip()
+            if not title or not description:
+                continue
+            spids = [
+                str(x).strip()
+                for x in (item.get("source_perspective_ids") or [])
+                if str(x).strip() and str(x).strip() in perspective_ids
+            ]
+            if not spids:
+                continue
+            priority = str(item.get("priority") or "").strip().lower()
+            if priority not in ("high", "medium", "low"):
+                priority = "medium"
+            out.append(
+                {
+                    "stakeholder": stakeholder,
+                    "feature_type": feature_type,
+                    "title": title[:90],
+                    "description": description[:400],
+                    "why_it_matters": str(item.get("why_it_matters") or "").strip()[:240],
+                    "source_perspective_ids": spids,
+                    "priority": priority,
+                }
+            )
+            if len(out) >= max(4, min(max_cards, 64)):
+                break
+        return out
+
     async def propose_perspective_changes(
         self,
         *,

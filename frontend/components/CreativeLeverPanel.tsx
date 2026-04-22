@@ -131,8 +131,8 @@ export function CreativeLeverPanel({
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-slate-600">
             One generation uses <strong>analogy, re-categorization, combination, and association</strong>{" "}
-            together — you only tune boldness, novelty, and goal priority. Role/stakeholder
-            context from SPARK is also used to diversify lenses.
+            together — you only tune boldness, novelty, and goal priority. Role lenses are
+            handled after Idea board generation in the Role Lens Sandbox.
           </p>
         </div>
         <span
