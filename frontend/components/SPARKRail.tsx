@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { InsightRecord, InventionArtifact, Perspective } from "@/lib/types";
+import type { InsightRecord, Perspective } from "@/lib/types";
 
 type FlowMode = "quick" | "studio";
 type FlowStepKey =
@@ -22,7 +22,6 @@ type Props = {
   progressPercent: number;
   selectedPerspectives: Perspective[];
   insights: InsightRecord[];
-  invention: InventionArtifact | null;
   flowStatus: {
     hasSpark: boolean;
     hasPerspectives: boolean;
@@ -70,7 +69,6 @@ export function SPARKRail({
   progressPercent,
   selectedPerspectives,
   insights,
-  invention,
   flowStatus,
   perspectiveDraftActive = false,
   collapsed,
@@ -81,7 +79,6 @@ export function SPARKRail({
   const [progressOpen, setProgressOpen] = useState(true);
   const [selectedOpen, setSelectedOpen] = useState(true);
   const [insightsOpen, setInsightsOpen] = useState(true);
-  const [inventionOpen, setInventionOpen] = useState(true);
 
   if (collapsed) {
     return (
@@ -292,33 +289,6 @@ export function SPARKRail({
         ) : null}
       </div>
 
-      <div className="mt-2 rounded-xl border border-slate-300 bg-slate-200/70">
-        <button
-          type="button"
-          onClick={() => setInventionOpen((v) => !v)}
-          className="flex w-full items-center justify-between bg-transparent px-3 py-2 text-left text-slate-800"
-          aria-expanded={inventionOpen}
-        >
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-700">
-            Invention
-          </span>
-          <span className="text-xs font-semibold text-slate-700">
-            {inventionOpen ? "Hide" : "Show"}
-          </span>
-        </button>
-        {inventionOpen ? (
-          <div className="border-t border-slate-200 px-3 py-2">
-            {invention ? (
-              <>
-                <p className="text-sm font-semibold text-slate-900">{invention.title}</p>
-                <p className="mt-1 text-xs text-slate-700">{invention.description}</p>
-              </>
-            ) : (
-              <p className="text-xs text-slate-600">No invention yet.</p>
-            )}
-          </div>
-        ) : null}
-      </div>
     </nav>
   );
 }

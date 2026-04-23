@@ -46,27 +46,6 @@ export function EnlightenmentView({
             ))}
           </ul>
           <p className="text-xs text-slate-600">{en.applies_elsewhere}</p>
-          <button
-            type="button"
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              try {
-                const blob = new Blob(
-                  [en.summary, "\n\n", en.principles.join("\n"), "\n\n", en.applies_elsewhere],
-                  { type: "text/plain" },
-                );
-                const a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = "spark-learning.txt";
-                a.click();
-                URL.revokeObjectURL(a.href);
-              } catch {
-                /* ignore */
-              }
-            }}
-          >
-            Save to file (library)
-          </button>
         </div>
       ) : null}
     </section>

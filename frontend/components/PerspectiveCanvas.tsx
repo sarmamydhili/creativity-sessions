@@ -36,6 +36,7 @@ type Props = {
   onToggleSelected: (id: string, selected: boolean) => void;
   onApproveProposal: (proposalId: string) => void;
   onRejectProposal: (proposalId: string) => void;
+  onViewportTopPositionChange?: (position: { x: number; y: number }) => void;
 };
 
 const nodeTypes: any = {
@@ -72,12 +73,25 @@ export function PerspectiveCanvas({
   onToggleSelected,
   onApproveProposal,
   onRejectProposal,
+  onViewportTopPositionChange,
 }: Props) {
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [rf, setRf] = useState<any>(null);
   const didInitialFitRef = useRef(false);
   const [miniMapOpen, setMiniMapOpen] = useState(true);
   const [canvasInteractive, setCanvasInteractive] = useState(true);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+
+  const emitViewportTopPosition = () => {
+    if (!rf || !viewportRef.current || !onViewportTopPositionChange) return;
+    const rect = viewportRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const pos = rf.screenToFlowPosition({
+      x: rect.left + rect.width * 0.5,
+      y: rect.top + 80,
+    });
+    onViewportTopPositionChange({ x: pos.x, y: pos.y });
+  };
 
   const perspectiveNodes: Node<PerspectiveNodeData>[] = useMemo(
     () =>
@@ -143,6 +157,13 @@ export function PerspectiveCanvas({
     return () => window.clearTimeout(t);
   }, [rf, nodes.length, lastArrangeLabel]);
 
+  useEffect(() => {
+    emitViewportTopPosition();
+    const onResize = () => emitViewportTopPosition();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [rf, nodes.length, onViewportTopPositionChange]);
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
@@ -159,7 +180,7 @@ export function PerspectiveCanvas({
             />
           </div>
           <p className="text-xs text-slate-600">
-            Drag cards to organize ideas. AI suggested moves stay preview-only until you keep them.
+            Drag cards to organize ideas. AI suggested cards stay preview-only until you keep them.
           </p>
           <p className="text-[11px] text-slate-500">
             Arrange by Theme groups by insight themes; if unavailable, it groups by SPARK dimension.
@@ -226,14 +247,17 @@ export function PerspectiveCanvas({
             type="button"
             className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
             disabled={loading}
-            title={requiresOpenAI ? "Requires OpenAI provider" : "Ask AI Agent for Suggestions"}
+            title={requiresOpenAI ? "Requires OpenAI provider" : "Suggest a new card"}
             onClick={onAskSuggestions}
           >
-            {loading ? "…" : "Suggest next moves"}
+            {loading ? "…" : "Suggest a new card"}
           </button>
         </div>
       </div>
-      <div className="relative h-[calc(100vh-240px)] min-h-[560px] max-h-[980px] w-full">
+      <div
+        ref={viewportRef}
+        className="relative h-[calc(100vh-240px)] min-h-[560px] max-h-[980px] w-full"
+      >
         <button
           type="button"
           className="absolute bottom-3 right-3 z-50 rounded-full border border-slate-400 bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white shadow-md hover:bg-slate-800"
@@ -256,9 +280,13 @@ export function PerspectiveCanvas({
           onNodeDragStop={handleDragStop}
           onNodeClick={(_e, node) => setActiveNodeId(node.id)}
           onPaneClick={() => setActiveNodeId(null)}
+          onMoveEnd={() => emitViewportTopPosition()}
           elevateNodesOnSelect
           fitView
-          onInit={(instance) => setRf(instance)}
+          onInit={(instance) => {
+            setRf(instance);
+            setTimeout(() => emitViewportTopPosition(), 0);
+          }}
         >
           {miniMapOpen ? (
             <MiniMap

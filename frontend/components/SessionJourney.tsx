@@ -731,6 +731,10 @@ export function SessionJourney({
   const [baselineAddDraft, setBaselineAddDraft] = useState<
     Partial<Record<(typeof SPARK_FIELDS)[number], string>>
   >({});
+  const [canvasTopPosition, setCanvasTopPosition] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [expandedFeatureCards, setExpandedFeatureCards] = useState<Record<string, boolean>>({});
   const dirtyLayoutPositionsRef = useRef<Record<string, XY>>({});
   const isQuick = experienceMode === "quick";
   const isStudio = experienceMode === "studio";
@@ -800,6 +804,7 @@ export function SessionJourney({
     setPoolSelectedOnly(false);
     setLastPreviewRecommended(null);
     setGhostProposals([]);
+    setExpandedFeatureCards({});
   }, [sessionId]);
 
   useEffect(() => {
@@ -1007,6 +1012,7 @@ export function SessionJourney({
   }
 
   async function addBlankPerspective() {
+    const preferredPosition = canvasTopPosition ?? { x: 120, y: 80 };
     const starterCard: Perspective = {
       perspective_id: newId(),
       text: "New perspective: click and refine this angle.",
@@ -1017,6 +1023,7 @@ export function SessionJourney({
       selected: false,
       promising: false,
       pool_excluded: false,
+      position: preferredPosition,
     };
     setPoolSearch("");
     setPoolSelectedOnly(false);
@@ -1035,6 +1042,7 @@ export function SessionJourney({
         title: starterCard.title ?? null,
         source_tool: starterCard.source_tool,
         spark_element: starterCard.spark_element,
+        position: preferredPosition,
       });
       setSession(s);
     } catch (e) {
@@ -1141,11 +1149,23 @@ export function SessionJourney({
     }
   }
 
+  function toggleFeatureCardExpanded(featureId: string) {
+    setExpandedFeatureCards((prev) => ({ ...prev, [featureId]: !prev[featureId] }));
+  }
+
+  function setAllFeatureCardsExpanded(expanded: boolean) {
+    const next: Record<string, boolean> = {};
+    stakeholderFeatureCards.forEach((card) => {
+      next[card.feature_id] = expanded;
+    });
+    setExpandedFeatureCards(next);
+  }
+
   async function runAskSuggestions() {
     setErr(null);
     if (creativeAi === "mock") {
       setErr(
-        "Ask AI Agent for Suggestions requires OpenAI provider. Set OPENAI_API_KEY and AI_PROVIDER=openai, restart backend, then try again.",
+        "Suggest a new card requires OpenAI provider. Set OPENAI_API_KEY and AI_PROVIDER=openai, restart backend, then try again.",
       );
       return;
     }
@@ -1157,7 +1177,7 @@ export function SessionJourney({
       const msg = e instanceof Error ? e.message : "Error";
       if (/requires OpenAI provider/i.test(msg)) {
         setErr(
-          "Ask AI Agent for Suggestions requires OpenAI provider. Set OPENAI_API_KEY and AI_PROVIDER=openai, restart backend, then try again.",
+          "Suggest a new card requires OpenAI provider. Set OPENAI_API_KEY and AI_PROVIDER=openai, restart backend, then try again.",
         );
       } else {
         setErr(msg);
@@ -1463,6 +1483,9 @@ export function SessionJourney({
     });
     return grouped;
   }, [stakeholderFeatureCards]);
+  const allFeatureCardsExpanded =
+    stakeholderFeatureCards.length > 0 &&
+    stakeholderFeatureCards.every((card) => Boolean(expandedFeatureCards[card.feature_id]));
 
   /** Build runs from selected/top perspectives + stakeholder feature cards (insights optional signal). */
   const inventionLocked =
@@ -1831,6 +1854,7 @@ export function SessionJourney({
             }}
             onApproveProposal={(proposalId) => void approveGhostProposal(proposalId)}
             onRejectProposal={rejectGhostProposal}
+            onViewportTopPositionChange={setCanvasTopPosition}
           />
         </div>
 
@@ -1867,8 +1891,7 @@ export function SessionJourney({
             6. Stakeholder Feature Cards
           </h2>
           <p className="muted text-sm text-slate-600">
-            Generate consolidated functional and technical feature cards from saved
-            perspectives, grouped by stakeholder.
+            Compact view for fast scanning. Expand a card when you want full detail.
           </p>
           <div className="row" style={{ gap: "0.45rem", flexWrap: "wrap" }}>
             <button
@@ -1895,6 +1918,24 @@ export function SessionJourney({
                 {selectedStakeholderFeatureCards.length} selected for build context
               </span>
             ) : null}
+            {stakeholderFeatureCards.length > 0 ? (
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => setAllFeatureCardsExpanded(true)}
+                >
+                  Expand all
+                </button>
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                  onClick={() => setAllFeatureCardsExpanded(false)}
+                >
+                  Collapse all
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {stakeholderFeatureCards.length === 0 ? (
@@ -1905,43 +1946,64 @@ export function SessionJourney({
             <div className="space-y-3">
               {Object.entries(groupedStakeholderFeatureCards).map(([stakeholder, cards]) => (
                 <div key={stakeholder} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
-                  <h3 className="text-sm font-semibold text-slate-900">{stakeholder}</h3>
-                  <div className="mt-1.5 space-y-1.5">
-                    {cards.map((card) => (
-                      <label
-                        key={card.feature_id}
-                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-2.5 hover:bg-slate-50"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={card.selected}
-                          onChange={(e) =>
-                            void toggleStakeholderFeatureCard(card.feature_id, e.target.checked)
-                          }
-                          disabled={loading !== null}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="m-0 text-sm font-semibold text-slate-900">{card.title}</p>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                              {card.feature_type}
-                            </span>
-                            {card.priority ? (
-                              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
-                                {card.priority}
-                              </span>
-                            ) : null}
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {stakeholder} <span className="text-xs font-normal text-slate-500">({cards.length})</span>
+                  </h3>
+                  <div className="mt-1.5 grid gap-1.5 md:grid-cols-2 xl:grid-cols-3">
+                    {cards.map((card) => {
+                      const expanded = Boolean(expandedFeatureCards[card.feature_id]);
+                      return (
+                        <div
+                          key={card.feature_id}
+                          className="rounded-lg border border-slate-200 bg-white p-2 hover:bg-slate-50"
+                        >
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={card.selected}
+                              onChange={(e) =>
+                                void toggleStakeholderFeatureCard(card.feature_id, e.target.checked)
+                              }
+                              disabled={loading !== null}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="m-0 line-clamp-2 text-sm font-semibold text-slate-900">
+                                {card.title}
+                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                                  {card.feature_type}
+                                </span>
+                                {card.priority ? (
+                                  <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+                                    {card.priority}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="rounded-md border border-indigo-700 bg-indigo-700 px-2 py-0.5 text-xs font-bold text-white shadow-sm hover:bg-indigo-800"
+                              onClick={() => toggleFeatureCardExpanded(card.feature_id)}
+                              title={expanded ? "Hide details" : "Show details"}
+                            >
+                              {expanded ? "−" : "+"}
+                            </button>
                           </div>
-                          <p className="mt-1 text-xs text-slate-700">{card.description}</p>
-                          {card.why_it_matters ? (
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              Why it matters: {card.why_it_matters}
-                            </p>
+                          {expanded ? (
+                            <div className="mt-1.5 border-t border-slate-100 pt-1.5">
+                              <p className="text-xs text-slate-700">{card.description}</p>
+                              {card.why_it_matters ? (
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                  Why it matters: {card.why_it_matters}
+                                </p>
+                              ) : null}
+                            </div>
                           ) : null}
                         </div>
-                      </label>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -2019,7 +2081,6 @@ export function SessionJourney({
             progressPercent={workflowProgressPercent(session.current_step)}
             selectedPerspectives={selectedForRail}
             insights={session.insights ?? []}
-            invention={session.invention}
             flowStatus={{
               hasSpark: Boolean(session.spark_state),
               hasPerspectives: session.perspectives.length > 0 && !explorationActive,
