@@ -62,6 +62,17 @@ const SPARK_LABELS: Record<(typeof SPARK_FIELDS)[number], string> = {
 };
 
 type ArrangeMode = "tool" | "theme";
+type FlowStepKey =
+  | "problem"
+  | "challenge"
+  | "ideaBoard"
+  | "generateIdeas"
+  | "refinePicks"
+  | "canvas"
+  | "stakeholderCards"
+  | "insights"
+  | "shapeConcept"
+  | "buildConcept";
 
 type IndexedPerspective = {
   p: Perspective;
@@ -252,6 +263,30 @@ function joinEditableLines(lines: string[]): string {
   if (t.length === 0) return "";
   if (t.every((x) => x === "")) return "";
   return t.join("\n");
+}
+
+function sectionIdForFlowStep(step: FlowStepKey): string {
+  switch (step) {
+    case "problem":
+      return "problem-step";
+    case "challenge":
+      return "challenge-step";
+    case "ideaBoard":
+    case "generateIdeas":
+    case "refinePicks":
+    case "canvas":
+      return "perspective-workspace";
+    case "stakeholderCards":
+      return "stakeholder-feature-cards-step";
+    case "insights":
+      return "insights-generate";
+    case "shapeConcept":
+      return "invention-builder";
+    case "buildConcept":
+      return "build-product-concept-action";
+    default:
+      return "perspective-workspace";
+  }
 }
 
 function joinPartsLines(lines: string[]): string {
@@ -1450,6 +1485,12 @@ export function SessionJourney({
       ? SPARK_FIELDS.filter((f) => f !== "role")
       : [...SPARK_FIELDS];
   const refinementChips = projectRefinementChips(projectType);
+  const scrollToFlowStep = (step: FlowStepKey) => {
+    const targetId = sectionIdForFlowStep(step);
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const guidedTray = showGuidedTray ? (
     <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
@@ -1480,7 +1521,7 @@ export function SessionJourney({
         </div>
       ) : null}
 
-      <section className="card stack">
+      <section id="problem-step" className="card stack">
         <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
           {isStudio ? "1. Problem" : "Session and problem"}
         </h2>
@@ -1537,7 +1578,7 @@ export function SessionJourney({
         ) : null}
       </section>
 
-      <details className="card stack" open={sparkCardsOpenByDefault}>
+      <details id="challenge-step" className="card stack" open={sparkCardsOpenByDefault}>
         <summary
           className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
           style={{ fontSize: "1.1rem" }}
@@ -1816,7 +1857,10 @@ export function SessionJourney({
       </section>
 
       {isStudio ? (
-        <section className="card stack rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+        <section
+          id="stakeholder-feature-cards-step"
+          className="card stack rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
+        >
           <h2 className="text-lg font-semibold text-slate-900">
             6. Stakeholder Feature Cards
           </h2>
@@ -1949,6 +1993,7 @@ export function SessionJourney({
         deliverableLabel={isStudio ? "Product Concept" : sessionGoalLabel}
         sectionTitle={isStudio ? "8. Shape Product Concept" : undefined}
         buildButtonLabel={isStudio ? "9. Build Product Concept" : undefined}
+        buildButtonId={isStudio ? "build-product-concept-action" : undefined}
         selectedFeatureCardsCount={selectedStakeholderFeatureCards.length}
         onGenerate={() => run("inv", () => generateInvention(sessionId))}
       />
@@ -1986,6 +2031,7 @@ export function SessionJourney({
             perspectiveDraftActive={explorationActive}
             collapsed={leftRailCollapsed}
             onToggleCollapsed={() => setLeftRailCollapsed((v) => !v)}
+            onFlowStepSelect={scrollToFlowStep}
           />
         }
         center={mainColumn}

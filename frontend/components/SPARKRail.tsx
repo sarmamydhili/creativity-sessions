@@ -4,7 +4,18 @@ import { useState } from "react";
 import type { InsightRecord, InventionArtifact, Perspective } from "@/lib/types";
 
 type FlowMode = "quick" | "guided" | "studio";
-type FlowStep = { label: string; done: boolean };
+type FlowStepKey =
+  | "problem"
+  | "challenge"
+  | "ideaBoard"
+  | "generateIdeas"
+  | "refinePicks"
+  | "canvas"
+  | "stakeholderCards"
+  | "insights"
+  | "shapeConcept"
+  | "buildConcept";
+type FlowStep = { key: FlowStepKey; label: string; done: boolean };
 
 type Props = {
   flowMode: FlowMode;
@@ -23,44 +34,46 @@ type Props = {
   perspectiveDraftActive?: boolean;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  onFlowStepSelect?: (key: FlowStepKey) => void;
 };
 
 function buildFlowSteps(flowMode: FlowMode, status: Props["flowStatus"]): FlowStep[] {
   if (flowMode === "quick") {
     return [
-      { label: "Problem", done: true },
-      { label: "Quick Frame", done: Boolean(status.hasSpark) },
-      { label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
-      { label: "Refine Picks", done: Boolean(status.hasPerspectives) },
-      { label: "Insights", done: Boolean(status.hasInsights) },
-      { label: "Build Concept", done: Boolean(status.hasInvention) },
+      { key: "problem", label: "Problem", done: true },
+      { key: "challenge", label: "Quick Frame", done: Boolean(status.hasSpark) },
+      { key: "generateIdeas", label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
+      { key: "refinePicks", label: "Refine Picks", done: Boolean(status.hasPerspectives) },
+      { key: "insights", label: "Insights", done: Boolean(status.hasInsights) },
+      { key: "buildConcept", label: "Build Concept", done: Boolean(status.hasInvention) },
     ];
   }
   if (flowMode === "guided") {
     return [
-      { label: "Problem", done: true },
-      { label: "Understand Challenge", done: Boolean(status.hasSpark) },
-      { label: "Idea Board", done: Boolean(status.hasPerspectives) },
-      { label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
-      { label: "Canvas", done: Boolean(status.hasPerspectives) },
-      { label: "Insights", done: Boolean(status.hasInsights) },
-      { label: "Shape Product Concept", done: Boolean(status.hasBuildInputs) },
-      { label: "Build Product Concept", done: Boolean(status.hasInvention) },
+      { key: "problem", label: "Problem", done: true },
+      { key: "challenge", label: "Understand Challenge", done: Boolean(status.hasSpark) },
+      { key: "ideaBoard", label: "Idea Board", done: Boolean(status.hasPerspectives) },
+      { key: "generateIdeas", label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
+      { key: "canvas", label: "Canvas", done: Boolean(status.hasPerspectives) },
+      { key: "insights", label: "Insights", done: Boolean(status.hasInsights) },
+      { key: "shapeConcept", label: "Shape Product Concept", done: Boolean(status.hasBuildInputs) },
+      { key: "buildConcept", label: "Build Product Concept", done: Boolean(status.hasInvention) },
     ];
   }
   return [
-    { label: "Problem", done: true },
-    { label: "Understand Challenge", done: Boolean(status.hasSpark) },
-    { label: "Idea Board", done: Boolean(status.hasPerspectives) },
-    { label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
-    { label: "Studio Canvas", done: Boolean(status.hasPerspectives) },
+    { key: "problem", label: "Problem", done: true },
+    { key: "challenge", label: "Understand Challenge", done: Boolean(status.hasSpark) },
+    { key: "ideaBoard", label: "Idea Board", done: Boolean(status.hasPerspectives) },
+    { key: "generateIdeas", label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
+    { key: "canvas", label: "Studio Canvas", done: Boolean(status.hasPerspectives) },
     {
+      key: "stakeholderCards",
       label: "Stakeholder Feature Cards",
       done: Boolean(status.hasStakeholderFeatureCards),
     },
-    { label: "Insights", done: Boolean(status.hasInsights) },
-    { label: "Shape Product Concept", done: Boolean(status.hasBuildInputs) },
-    { label: "Build Product Concept", done: Boolean(status.hasInvention) },
+    { key: "insights", label: "Insights", done: Boolean(status.hasInsights) },
+    { key: "shapeConcept", label: "Shape Product Concept", done: Boolean(status.hasBuildInputs) },
+    { key: "buildConcept", label: "Build Product Concept", done: Boolean(status.hasInvention) },
   ];
 }
 
@@ -74,6 +87,7 @@ export function SPARKRail({
   perspectiveDraftActive = false,
   collapsed,
   onToggleCollapsed,
+  onFlowStepSelect,
 }: Props) {
   const [flowOpen, setFlowOpen] = useState(true);
   const [progressOpen, setProgressOpen] = useState(true);
@@ -151,8 +165,10 @@ export function SPARKRail({
                   </div>
                   <ul className="flex flex-col gap-1">
                     {steps.map((step, idx) => (
-                      <li key={`${step.label}-${idx}`}>
-                        <div
+                      <li key={`${step.key}-${idx}`}>
+                        <button
+                          type="button"
+                          onClick={() => onFlowStepSelect?.(step.key)}
                           className={`flex w-full items-center gap-2 rounded-xl bg-slate-100 px-2 py-2 text-left text-sm transition ${
                             idx === nextIdx
                               ? "ring-1 ring-indigo-300"
@@ -182,7 +198,7 @@ export function SPARKRail({
                           <span className={step.done ? "text-emerald-600" : "text-slate-400"}>
                             {step.done ? "✓" : "○"}
                           </span>
-                        </div>
+                        </button>
                       </li>
                     ))}
                   </ul>

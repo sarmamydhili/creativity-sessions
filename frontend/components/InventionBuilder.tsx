@@ -10,6 +10,7 @@ type Props = {
   selectedFeatureCardsCount?: number;
   sectionTitle?: string;
   buildButtonLabel?: string;
+  buildButtonId?: string;
   /** Shown as native tooltip when the button is disabled (why it won’t run). */
   inventionLockTitle?: string;
   onGenerate: () => void;
@@ -23,6 +24,7 @@ export function InventionBuilder({
   selectedFeatureCardsCount = 0,
   sectionTitle,
   buildButtonLabel,
+  buildButtonId,
   inventionLockTitle,
   onGenerate,
 }: Props) {
@@ -48,6 +50,7 @@ export function InventionBuilder({
         </p>
       ) : null}
       <button
+        id={buildButtonId}
         type="button"
         className="w-full max-w-xs cursor-pointer rounded-xl bg-spark-role py-2.5 text-sm font-semibold text-white shadow-soft disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-6"
         disabled={inventionLocked}
