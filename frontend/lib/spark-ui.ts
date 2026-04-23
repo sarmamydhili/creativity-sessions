@@ -36,7 +36,7 @@ export function suggestedNextMove(session: SessionDetail): string {
     return "Generate one idea batch, shortlist favorites, and save your board.";
   }
   if (s === "perspectives_generated") {
-    return "Find patterns from your selected ideas, then shape your concept.";
+    return "Generate insights from your selected ideas, then shape your concept.";
   }
   if (s === "insights_generated") {
     return "Build your concept plan, then save reusable lessons.";

@@ -37,8 +37,7 @@ import { InventionBuilder } from "@/components/InventionBuilder";
 import { PerspectiveCanvas } from "@/components/PerspectiveCanvas";
 import { SPARKRail } from "@/components/SPARKRail";
 import { SPARKWorkspace } from "@/components/SPARKWorkspace";
-import type { SparkRailKey } from "@/lib/spark-ui";
-import { sparkRailStatus, suggestedNextMove, workflowProgressPercent } from "@/lib/spark-ui";
+import { suggestedNextMove, workflowProgressPercent } from "@/lib/spark-ui";
 import {
   deliverableLabel,
   projectTypeLabel,
@@ -675,7 +674,6 @@ export function SessionJourney({
   const [poolSettings, setPoolSettings] = useState<PerspectivePoolSettings>(
     () => ({ ...DEFAULT_PERSPECTIVE_POOL }),
   );
-  const [activeRail, setActiveRail] = useState<SparkRailKey>("situation");
   const [perspectivePool, setPerspectivePool] = useState<Perspective[]>(
     () => initial.perspectives ?? [],
   );
@@ -1444,17 +1442,6 @@ export function SessionJourney({
         ? "Generate insights or select stakeholder feature cards first."
         : undefined;
 
-  function handleRailSelect(key: SparkRailKey) {
-    setActiveRail(key);
-    const v = document.querySelector(
-      `[data-spark-phase="variation"][data-spark-anchor="${key}"]`,
-    );
-    const b = document.querySelector(
-      `[data-spark-phase="baseline"][data-spark-anchor="${key}"]`,
-    );
-    (v || b)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
   const selectedForRail = explorationActive
     ? []
     : perspectivesInPool.filter((p) => p.selected);
@@ -1494,7 +1481,9 @@ export function SessionJourney({
       ) : null}
 
       <section className="card stack">
-        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Session and problem</h2>
+        <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
+          {isStudio ? "1. Problem" : "Session and problem"}
+        </h2>
         <p className="muted text-sm" style={{ marginTop: "0.25rem" }}>
           <strong>{stepLabel(session.current_step)}</strong> · iteration{" "}
           {session.current_iteration} · {session.status}
@@ -1541,6 +1530,11 @@ export function SessionJourney({
         >
           {loading === "prob" ? "…" : "Save challenge"}
         </button>
+        {isStudio ? (
+          <p className="text-xs font-medium text-indigo-700">
+            Next: 2. Understand challenge
+          </p>
+        ) : null}
       </section>
 
       <details className="card stack" open={sparkCardsOpenByDefault}>
@@ -1548,7 +1542,7 @@ export function SessionJourney({
           className="cursor-pointer list-none font-semibold [&::-webkit-details-marker]:hidden"
           style={{ fontSize: "1.1rem" }}
         >
-          1. Understand the challenge
+          {isStudio ? "2. Understand challenge" : "1. Understand the challenge"}
         </summary>
         <div className="mt-3 stack">
         {!session.spark_state ? (
@@ -1632,17 +1626,22 @@ export function SessionJourney({
             ) : null}
           </div>
         ) : null}
+        {isStudio ? (
+          <p className="text-xs font-medium text-indigo-700">
+            Next: 3. Idea Board
+          </p>
+        ) : null}
         </div>
       </details>
 
       <section
         id="perspective-workspace"
-        className="card stack min-h-[min(70vh,920px)] rounded-2xl border-2 border-indigo-100 bg-gradient-to-b from-white to-slate-50/80 p-4 shadow-card sm:p-6"
+        className="card stack min-h-[min(68vh,900px)] rounded-2xl border-2 border-indigo-100 bg-gradient-to-b from-white to-slate-50/80 p-3 shadow-card sm:p-4"
       >
         <div className="mb-2 flex flex-wrap items-end justify-between gap-2 border-b border-slate-100 pb-3">
           <div>
             <h2 style={{ margin: 0, fontSize: "1.25rem" }} className="text-slate-900">
-              Idea board
+              {isStudio ? "3. Idea Board" : "Idea board"}
             </h2>
           </div>
           {explorationActive ? (
@@ -1677,7 +1676,7 @@ export function SessionJourney({
           }
         />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-indigo-700 disabled:opacity-50"
@@ -1689,7 +1688,7 @@ export function SessionJourney({
             }
             onClick={() => void runGeneratePerspectives()}
           >
-            {loading === "persp-gen" ? "…" : "Generate ideas"}
+            {loading === "persp-gen" ? "…" : (isStudio ? "4. Generate Ideas" : "Generate ideas")}
           </button>
           <button
             type="button"
@@ -1724,7 +1723,7 @@ export function SessionJourney({
           </div>
         ) : null}
 
-        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="mt-3 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-2.5 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
             <input
               type="checkbox"
@@ -1736,7 +1735,7 @@ export function SessionJourney({
         </div>
 
         <div
-          className="rank-help mt-4 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5 text-xs leading-relaxed text-slate-700"
+          className="rank-help mt-3 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2 text-xs leading-relaxed text-slate-700"
           role="note"
         >
           <p className="m-0">
@@ -1752,7 +1751,12 @@ export function SessionJourney({
           </p>
         </div>
 
-        <div className="mt-4 min-h-0 flex-1">
+        <div className="mt-3 min-h-0 flex-1">
+          {isStudio ? (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              5. Studio Canvas
+            </p>
+          ) : null}
           <PerspectiveCanvas
             perspectives={displayedPerspectives}
             proposals={ghostProposals}
@@ -1787,7 +1791,7 @@ export function SessionJourney({
           />
         </div>
 
-        <div className="sticky bottom-0 z-10 mt-6 border-t border-slate-200 bg-gradient-to-t from-slate-50 to-transparent pt-4">
+        <div className="sticky bottom-0 z-10 mt-4 border-t border-slate-200 bg-gradient-to-t from-slate-50 to-transparent pt-3">
           <button
             type="button"
             className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-slate-800 disabled:opacity-45 sm:w-auto sm:min-w-[280px]"
@@ -1800,20 +1804,27 @@ export function SessionJourney({
           </button>
           <p className="muted mt-2 text-xs">
             Saves every card in your draft with its flags (× not in board, ★ promising,
-            checkbox for patterns). Re-open the session to see the same layout.
+            checkbox for insights). Re-open the session to see the same layout.
             If none are checked, the top 10 by score are used.
           </p>
+          {isStudio ? (
+            <p className="mt-1 text-xs font-medium text-indigo-700">
+              Next: 6. Stakeholder Feature Cards
+            </p>
+          ) : null}
         </div>
       </section>
 
       {isStudio ? (
-        <section className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <h2 className="text-lg font-semibold text-slate-900">Stakeholder Feature Cards</h2>
+        <section className="card stack rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+          <h2 className="text-lg font-semibold text-slate-900">
+            6. Stakeholder Feature Cards
+          </h2>
           <p className="muted text-sm text-slate-600">
             Generate consolidated functional and technical feature cards from saved
             perspectives, grouped by stakeholder.
           </p>
-          <div className="row" style={{ gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: "0.45rem", flexWrap: "wrap" }}>
             <button
               type="button"
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
@@ -1845,11 +1856,11 @@ export function SessionJourney({
               No feature cards yet. Save your perspective pool, then generate cards.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {Object.entries(groupedStakeholderFeatureCards).map(([stakeholder, cards]) => (
-                <div key={stakeholder} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                <div key={stakeholder} className="rounded-xl border border-slate-200 bg-slate-50/70 p-2.5">
                   <h3 className="text-sm font-semibold text-slate-900">{stakeholder}</h3>
-                  <div className="mt-2 space-y-2">
+                  <div className="mt-1.5 space-y-1.5">
                     {cards.map((card) => (
                       <label
                         key={card.feature_id}
@@ -1890,14 +1901,17 @@ export function SessionJourney({
               ))}
             </div>
           )}
+          <p className="text-xs font-medium text-indigo-700">Next: 7. Insights</p>
         </section>
       ) : null}
 
       <section
         id="insights-generate"
-        className="card stack rounded-2xl border border-slate-200 bg-white p-5 shadow-card"
+        className="card stack rounded-2xl border border-slate-200 bg-white p-4 shadow-card"
       >
-        <h2 className="text-lg font-semibold text-slate-900">Find patterns</h2>
+        <h2 className="text-lg font-semibold text-slate-900">
+          {isStudio ? "7. Insights" : "Insights"}
+        </h2>
         <p className="muted text-sm text-slate-600">
           Synthesize from checked ideas. If none are checked, the server uses the{" "}
           <strong>top 10</strong> cards by score. Run this before shaping your{" "}
@@ -1905,7 +1919,7 @@ export function SessionJourney({
         </p>
         <button
           type="button"
-          className="mt-3 w-full max-w-xs rounded-xl bg-spark-situation py-2.5 text-sm font-semibold text-white shadow-soft disabled:opacity-45 sm:w-auto sm:px-6"
+          className="mt-2 w-full max-w-xs rounded-xl bg-spark-situation py-2.5 text-sm font-semibold text-white shadow-soft disabled:opacity-45 sm:w-auto sm:px-6"
           disabled={insightsLocked}
           title={
             explorationActive
@@ -1918,8 +1932,13 @@ export function SessionJourney({
           }
           onClick={() => run("ins", () => generateInsights(sessionId))}
         >
-          {loading === "ins" ? "…" : "Find patterns"}
+          {loading === "ins" ? "…" : "Generate insights"}
         </button>
+        {isStudio ? (
+          <p className="text-xs font-medium text-indigo-700">
+            Next: 8. Shape Product Concept
+          </p>
+        ) : null}
       </section>
 
       <InventionBuilder
@@ -1927,7 +1946,9 @@ export function SessionJourney({
         loading={loading}
         inventionLocked={inventionLocked}
         inventionLockTitle={inventionLockTitle}
-        deliverableLabel={sessionGoalLabel}
+        deliverableLabel={isStudio ? "Product Concept" : sessionGoalLabel}
+        sectionTitle={isStudio ? "8. Shape Product Concept" : undefined}
+        buildButtonLabel={isStudio ? "9. Build Product Concept" : undefined}
         selectedFeatureCardsCount={selectedStakeholderFeatureCards.length}
         onGenerate={() => run("inv", () => generateInvention(sessionId))}
       />
@@ -1947,13 +1968,21 @@ export function SessionJourney({
         railCollapsed={leftRailCollapsed}
         rail={
           <SPARKRail
-            activeKey={activeRail}
-            onSelect={handleRailSelect}
-            statusFor={(key) => sparkRailStatus(session, activeRail, key)}
+            flowMode={experienceMode}
             progressPercent={workflowProgressPercent(session.current_step)}
             selectedPerspectives={selectedForRail}
             insights={session.insights ?? []}
             invention={session.invention}
+            flowStatus={{
+              hasSpark: Boolean(session.spark_state),
+              hasPerspectives: session.perspectives.length > 0 && !explorationActive,
+              hasStakeholderFeatureCards: stakeholderFeatureCards.length > 0,
+              hasInsights: (session.insights?.length ?? 0) > 0,
+              hasBuildInputs:
+                (session.insights?.length ?? 0) > 0 ||
+                selectedStakeholderFeatureCards.length > 0,
+              hasInvention: Boolean(session.invention),
+            }}
             perspectiveDraftActive={explorationActive}
             collapsed={leftRailCollapsed}
             onToggleCollapsed={() => setLeftRailCollapsed((v) => !v)}
