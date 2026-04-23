@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { InsightRecord, InventionArtifact, Perspective } from "@/lib/types";
 
-type FlowMode = "quick" | "guided" | "studio";
+type FlowMode = "quick" | "studio";
 type FlowStepKey =
   | "problem"
   | "challenge"
@@ -46,18 +46,6 @@ function buildFlowSteps(flowMode: FlowMode, status: Props["flowStatus"]): FlowSt
       { key: "refinePicks", label: "Refine Picks", done: Boolean(status.hasPerspectives) },
       { key: "insights", label: "Insights", done: Boolean(status.hasInsights) },
       { key: "buildConcept", label: "Build Concept", done: Boolean(status.hasInvention) },
-    ];
-  }
-  if (flowMode === "guided") {
-    return [
-      { key: "problem", label: "Problem", done: true },
-      { key: "challenge", label: "Understand Challenge", done: Boolean(status.hasSpark) },
-      { key: "ideaBoard", label: "Idea Board", done: Boolean(status.hasPerspectives) },
-      { key: "generateIdeas", label: "Generate Ideas", done: Boolean(status.hasPerspectives) },
-      { key: "canvas", label: "Canvas", done: Boolean(status.hasPerspectives) },
-      { key: "insights", label: "Insights", done: Boolean(status.hasInsights) },
-      { key: "shapeConcept", label: "Shape Product Concept", done: Boolean(status.hasBuildInputs) },
-      { key: "buildConcept", label: "Build Product Concept", done: Boolean(status.hasInvention) },
     ];
   }
   return [
@@ -140,9 +128,7 @@ export function SPARKRail({
           const flowTitle =
             flowMode === "studio"
               ? "Studio flow"
-              : flowMode === "guided"
-                ? "Guided flow"
-                : "Quick flow";
+              : "Quick flow";
           return (
             <>
               <button

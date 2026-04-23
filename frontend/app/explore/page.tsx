@@ -5,7 +5,7 @@ export default function ExplorePage() {
     <div className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="text-2xl font-bold text-slate-900">Explore</h1>
       <p className="mt-3 text-sm leading-relaxed text-slate-600">
-        Browse prompts, creativity insights, and guided paths. This area is
+        Browse prompts, creativity insights, and workflow paths. This area is
         reserved for future content — your sessions stay the source of truth.
       </p>
       <Link

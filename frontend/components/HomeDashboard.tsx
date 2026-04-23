@@ -15,7 +15,7 @@ const TEMPLATES = [
   {
     title: "Birthday surprise",
     blurb: "Plan a memorable birthday surprise with a clear timeline.",
-    mode: "guided",
+    mode: "quick",
     project: "event_celebration",
   },
   {
@@ -67,8 +67,8 @@ export function HomeDashboard() {
           Simple on the surface, deep underneath
         </h1>
         <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-600">
-          Start with quick ideas for everyday needs, switch to guided flow when you
-          want structure, and open Studio when you need full creative depth.
+          Start with quick ideas for everyday needs, then open Studio when you need
+          full creative depth.
         </p>
         <Link
           href="/sessions/new?mode=quick&project=personal_project"

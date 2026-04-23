@@ -96,7 +96,7 @@ export function SessionForm({
       </div>
       <div>
         <label className="label">How would you like to work?</label>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           {EXPERIENCE_OPTIONS.map((opt) => (
             <button
               key={opt.value}

@@ -165,14 +165,14 @@ function sparkPromptLabel(
   mode: ExperienceMode,
 ): string {
   if (mode === "studio") return SPARK_LABELS[field];
-  const guidedLabels: Record<(typeof SPARK_FIELDS)[number], string> = {
+  const quickLabels: Record<(typeof SPARK_FIELDS)[number], string> = {
     situation: "What's going on?",
     parts: "What matters most?",
     actions: "What can change?",
     role: "Who is involved?",
     key_goal: "What would a great outcome look like?",
   };
-  return guidedLabels[field];
+  return quickLabels[field];
 }
 
 function projectRefinementChips(projectType: ProjectType): string[] {
@@ -733,10 +733,9 @@ export function SessionJourney({
   >({});
   const dirtyLayoutPositionsRef = useRef<Record<string, XY>>({});
   const isQuick = experienceMode === "quick";
-  const isGuided = experienceMode === "guided";
   const isStudio = experienceMode === "studio";
   const sparkCardsOpenByDefault = !isQuick;
-  const showGuidedTray = isQuick || isGuided;
+  const showQuickTray = isQuick;
   const sessionGoalLabel = deliverableLabel(projectType);
 
   useEffect(() => {
@@ -1484,7 +1483,7 @@ export function SessionJourney({
     ? []
     : perspectivesInPool.filter((p) => p.selected);
   const baselineFields: Array<(typeof SPARK_FIELDS)[number]> =
-    isQuick || isGuided
+    isQuick
       ? SPARK_FIELDS.filter((f) => f !== "role")
       : [...SPARK_FIELDS];
   const refinementChips = projectRefinementChips(projectType);
@@ -1494,10 +1493,10 @@ export function SessionJourney({
     if (!el) return;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  const guidedTray = showGuidedTray ? (
+  const quickTray = showQuickTray ? (
     <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-        {isQuick ? "Quick guide" : "Guided creator"}
+        Quick guide
       </p>
       <h3 className="mt-1 text-sm font-semibold text-slate-900">
         {projectTypeLabel(projectType)}
@@ -1663,7 +1662,7 @@ export function SessionJourney({
                 />
               </div>
             ))}
-            {isQuick || isGuided ? (
+            {isQuick ? (
               <p className="mt-1 text-xs text-indigo-700">
                 Stakeholder feature cards appear after Idea board so you can shape ideas first.
               </p>
@@ -2038,7 +2037,7 @@ export function SessionJourney({
           />
         }
         center={mainColumn}
-        tray={guidedTray}
+        tray={quickTray}
         footer={null}
       />
     </div>

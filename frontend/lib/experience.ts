@@ -1,4 +1,4 @@
-export type ExperienceMode = "quick" | "guided" | "studio";
+export type ExperienceMode = "quick" | "studio";
 
 export type ProjectType =
   | "home_decor"
@@ -16,11 +16,6 @@ export const EXPERIENCE_OPTIONS: Array<{ value: ExperienceMode; label: string; h
     value: "quick",
     label: "Quick ideas",
     hint: "Fast directions with light setup.",
-  },
-  {
-    value: "guided",
-    label: "Guided creator",
-    hint: "Step-by-step support with smart prompts.",
   },
   {
     value: "studio",
@@ -79,7 +74,9 @@ export const PROJECT_TYPE_OPTIONS: Array<{ value: ProjectType; label: string; sa
   ];
 
 export function parseExperienceMode(value: string | undefined): ExperienceMode {
-  if (value === "quick" || value === "guided" || value === "studio") return value;
+  // Backward compatibility for old URLs/sessions that used guided mode.
+  if (value === "guided") return "quick";
+  if (value === "quick" || value === "studio") return value;
   return "studio";
 }
 
