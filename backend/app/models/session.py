@@ -185,10 +185,22 @@ class StakeholderFeatureCard(BaseModel):
 
 
 class InventionArtifact(BaseModel):
+    # Legacy fields (kept for backward compatibility with older sessions/UI)
     title: str = ""
     description: str = ""
     benefits: str = ""
     next_steps: str = ""
+    # Standard product concept template fields
+    product_name: str = ""
+    what_is_it: str = ""
+    why_does_it_exist: str = ""
+    who_is_it_for: str = ""
+    value_provided: str = ""
+    core_capabilities: list[str] = Field(default_factory=list)
+    how_is_it_different: str = ""
+    business_goal: str = ""
+    success_looks_like: str = ""
+    future_potential: str = ""
 
 
 class EnlightenmentArtifact(BaseModel):

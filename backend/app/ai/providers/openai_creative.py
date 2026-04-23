@@ -566,23 +566,63 @@ class OpenAICreativeProvider(CreativeProvider):
                 break
         return out
 
-    async def invention_from_insights(
+    async def invention_from_inputs(
         self,
         *,
         spark: SparkState,
-        insights: list[str],
+        selected_or_top_perspectives: list[str],
+        stakeholder_feature_cards: list[str],
+        insight_signals: list[str] | None = None,
     ) -> InventionArtifact:
         system = prompt_templates.INVENTION_SYSTEM
         user = json.dumps(
-            {"spark": spark.model_dump(), "insights": insights},
+            {
+                "spark": spark.model_dump(),
+                "selected_or_top_perspectives": selected_or_top_perspectives,
+                "stakeholder_feature_cards": stakeholder_feature_cards,
+                "insight_signals": insight_signals or [],
+            },
             ensure_ascii=False,
         )
         raw = await self._chat_json(system=system, user=user)
+        product_name = str(raw.get("product_name") or raw.get("title") or "").strip()
+        what_is_it = str(raw.get("what_is_it") or raw.get("description") or "").strip()
+        why_does_it_exist = str(raw.get("why_does_it_exist") or "").strip()
+        who_is_it_for = str(raw.get("who_is_it_for") or "").strip()
+        value_provided = str(raw.get("value_provided") or raw.get("benefits") or "").strip()
+        core_caps_raw = raw.get("core_capabilities")
+        core_capabilities: list[str] = []
+        if isinstance(core_caps_raw, list):
+            core_capabilities = [str(x).strip() for x in core_caps_raw if str(x).strip()][:3]
+        how_is_it_different = str(raw.get("how_is_it_different") or "").strip()
+        business_goal = str(raw.get("business_goal") or "").strip()
+        success_looks_like = str(raw.get("success_looks_like") or "").strip()
+        future_potential = str(raw.get("future_potential") or raw.get("next_steps") or "").strip()
+        description = (
+            f"What is it? {what_is_it}\n\n"
+            f"Why does it exist? {why_does_it_exist}\n\n"
+            f"Who is it for? {who_is_it_for}\n\n"
+            f"What value does it provide? {value_provided}\n\n"
+            f"How is it different? {how_is_it_different}\n\n"
+            f"Business Goal: {business_goal}\n\n"
+            f"Success Looks Like: {success_looks_like}\n\n"
+            f"Future Potential: {future_potential}"
+        ).strip()
         return InventionArtifact(
-            title=str(raw.get("title", "")),
-            description=str(raw.get("description", "")),
-            benefits=str(raw.get("benefits", "")),
-            next_steps=str(raw.get("next_steps", "")),
+            title=product_name,
+            description=description,
+            benefits=value_provided,
+            next_steps=future_potential,
+            product_name=product_name,
+            what_is_it=what_is_it,
+            why_does_it_exist=why_does_it_exist,
+            who_is_it_for=who_is_it_for,
+            value_provided=value_provided,
+            core_capabilities=core_capabilities,
+            how_is_it_different=how_is_it_different,
+            business_goal=business_goal,
+            success_looks_like=success_looks_like,
+            future_potential=future_potential,
         )
 
     async def enlightenment_from_work(

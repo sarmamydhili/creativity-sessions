@@ -127,11 +127,13 @@ class CreativeProvider(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def invention_from_insights(
+    async def invention_from_inputs(
         self,
         *,
         spark: SparkState,
-        insights: list[str],
+        selected_or_top_perspectives: list[str],
+        stakeholder_feature_cards: list[str],
+        insight_signals: list[str] | None = None,
     ) -> InventionArtifact:
         raise NotImplementedError
 

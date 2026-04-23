@@ -30,6 +30,11 @@ export function InventionBuilder({
 }: Props) {
   const inv = session.invention;
   const count = session.inventions?.length ?? 0;
+  const hasTemplateFields =
+    Boolean(inv?.product_name) ||
+    Boolean(inv?.what_is_it) ||
+    Boolean(inv?.why_does_it_exist) ||
+    Boolean(inv?.who_is_it_for);
 
   return (
     <section
@@ -71,10 +76,38 @@ export function InventionBuilder({
       ) : null}
       {inv ? (
         <div className="mt-3 space-y-2.5 rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-          <h3 className="text-base font-semibold text-slate-900">{inv.title}</h3>
-          <p className="text-sm text-slate-800">{inv.description}</p>
-          <p className="text-xs text-slate-600">{inv.benefits}</p>
-          <p className="text-xs text-slate-600">{inv.next_steps}</p>
+          <h3 className="text-base font-semibold text-slate-900">
+            {inv.product_name || inv.title}
+          </h3>
+          {hasTemplateFields ? (
+            <div className="space-y-2 text-xs text-slate-700">
+              <p><strong>1. Product Name:</strong> {inv.product_name || inv.title}</p>
+              <p><strong>2. What is it?</strong> {inv.what_is_it || inv.description}</p>
+              <p><strong>3. Why does it exist?</strong> {inv.why_does_it_exist || "-"}</p>
+              <p><strong>4. Who is it for?</strong> {inv.who_is_it_for || "-"}</p>
+              <p><strong>5. What value does it provide?</strong> {inv.value_provided || inv.benefits || "-"}</p>
+              <div>
+                <p className="m-0"><strong>6. Core Capabilities</strong></p>
+                <ul className="ml-4 list-disc">
+                  {(inv.core_capabilities && inv.core_capabilities.length > 0
+                    ? inv.core_capabilities
+                    : ["-"]).map((cap, idx) => (
+                    <li key={`${cap}-${idx}`}>{cap}</li>
+                  ))}
+                </ul>
+              </div>
+              <p><strong>7. How is it different?</strong> {inv.how_is_it_different || "-"}</p>
+              <p><strong>8. Business Goal:</strong> {inv.business_goal || "-"}</p>
+              <p><strong>9. Success Looks Like:</strong> {inv.success_looks_like || "-"}</p>
+              <p><strong>10. Future Potential:</strong> {inv.future_potential || inv.next_steps || "-"}</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-slate-800">{inv.description}</p>
+              <p className="text-xs text-slate-600">{inv.benefits}</p>
+              <p className="text-xs text-slate-600">{inv.next_steps}</p>
+            </>
+          )}
           <p className="text-xs text-slate-400">
             Editable copies can be pasted into your own docs — server persistence
             of edits may follow in a later release.

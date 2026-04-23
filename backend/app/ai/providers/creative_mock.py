@@ -546,21 +546,57 @@ class CreativeMockProvider(CreativeProvider):
         ]
         return proposals[: max(1, min(max_proposals, 12))]
 
-    async def invention_from_insights(
+    async def invention_from_inputs(
         self,
         *,
         spark: SparkState,
-        insights: list[str],
+        selected_or_top_perspectives: list[str],
+        stakeholder_feature_cards: list[str],
+        insight_signals: list[str] | None = None,
     ) -> InventionArtifact:
+        _ = insight_signals
         anchor = _clip(spark.key_goal or spark.situation or "your challenge", 80)
+        capability_seed = [
+            "Prioritized experience flow from top perspectives",
+            "Stakeholder-informed functional and technical requirements",
+            "Measurable learning loop tied to core success outcomes",
+        ]
+        if selected_or_top_perspectives:
+            capability_seed[0] = "Experience flow distilled from selected or top 10 perspectives"
+        if stakeholder_feature_cards:
+            capability_seed[1] = "Feature architecture grounded in stakeholder feature cards"
+        what_is_it = (
+            "A product concept that combines the strongest perspective angles with stakeholder-feature guidance "
+            "into one coherent direction."
+        )
+        why_does_it_exist = (
+            "To transform broad creative exploration into a concrete concept aligned to user needs and build priorities."
+        )
+        who_is_it_for = "Primary end users, supporting stakeholders, and the product delivery team."
+        value_provided = "Higher concept clarity, better stakeholder alignment, and faster path to a viable first build."
+        how_is_it_different = (
+            "It is explicitly synthesized from selected/top perspectives plus stakeholder feature cards, not from generic ideation."
+        )
+        business_goal = "De-risk product direction while accelerating confident MVP decisions."
+        success_looks_like = (
+            "Teams can clearly explain the concept, align on priorities, and define the first build scope without major ambiguity."
+        )
+        future_potential = "Extend into roadmap themes, validation experiments, and adjacent stakeholder segments."
         return InventionArtifact(
             title=f"Concept sketch: {anchor}",
-            description=(
-                f"A concrete intervention direction grounded in «{_clip(spark.key_goal or spark.situation, 400)}». "
-                "Prototype the smallest version that delivers signal, then scale what works."
-            ),
-            benefits="Faster learning, clearer tradeoffs, less wasted build on wrong assumptions.",
-            next_steps="Interview 3 stakeholders; paper prototype; define one success metric.",
+            description=what_is_it,
+            benefits=value_provided,
+            next_steps=future_potential,
+            product_name=f"Concept sketch: {anchor}",
+            what_is_it=what_is_it,
+            why_does_it_exist=why_does_it_exist,
+            who_is_it_for=who_is_it_for,
+            value_provided=value_provided,
+            core_capabilities=capability_seed,
+            how_is_it_different=how_is_it_different,
+            business_goal=business_goal,
+            success_looks_like=success_looks_like,
+            future_potential=future_potential,
         )
 
     async def enlightenment_from_work(

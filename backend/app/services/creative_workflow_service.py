@@ -1151,28 +1151,47 @@ class CreativeWorkflowService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="SPARK required before invention",
             )
-        raw_insights = d.get("insights") or []
-        insight_texts = _insight_texts_from(raw_insights)
-        selected_feature_cards = [
-            c for c in _parse_stored_feature_cards(d.get("stakeholder_feature_cards")) if c.selected
+        perspectives = _load_perspectives(d)
+        in_pool = [p for p in perspectives if not p.pool_excluded]
+        selected = [p for p in in_pool if p.selected]
+        base_perspectives = selected if selected else _top_in_pool_perspectives_for_insights(in_pool, limit=10)
+        perspective_texts = [
+            (
+                f"[Perspective | tool={p.source_tool} | spark={p.spark_element}] "
+                f"{(p.title or '').strip()}: {(p.text or p.description or '').strip()}"
+            ).strip(": ")
+            for p in base_perspectives
+            if (p.text or p.description or "").strip()
         ]
+        all_feature_cards = _parse_stored_feature_cards(d.get("stakeholder_feature_cards"))
+        selected_feature_cards = [c for c in all_feature_cards if c.selected]
+        feature_cards_for_build = selected_feature_cards if selected_feature_cards else all_feature_cards
         feature_texts = [
             (
                 f"[Stakeholder: {c.stakeholder} | {c.feature_type}] {c.title}: {c.description}"
                 + (f" Why: {c.why_it_matters}" if c.why_it_matters else "")
             )
-            for c in selected_feature_cards
+            for c in feature_cards_for_build
+            if c.title.strip() and c.description.strip()
         ]
-        invention_inputs = insight_texts + feature_texts
-        if not invention_inputs:
+        raw_insights = d.get("insights") or []
+        insight_texts = _insight_texts_from(raw_insights)
+        if not perspective_texts and not feature_texts:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Generate insights or select stakeholder feature cards before building product.",
+                detail=(
+                    "Generate perspectives first, then add stakeholder feature cards to build product concept."
+                ),
             )
         spark = SparkState(
             **{k: d["spark_state"].get(k, "") for k in SparkState.model_fields},
         )
-        inv = await self._provider.invention_from_insights(spark=spark, insights=invention_inputs)
+        inv = await self._provider.invention_from_inputs(
+            spark=spark,
+            selected_or_top_perspectives=perspective_texts,
+            stakeholder_feature_cards=feature_texts,
+            insight_signals=insight_texts,
+        )
         hist = self._hist(HistoryEventKind.invention_generated, {"title": inv.title})
         next_iter = int(d.get("current_iteration", 1)) + 1
         prior_inv = _parse_inventions_list(d.get("inventions"))

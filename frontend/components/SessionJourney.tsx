@@ -1465,16 +1465,19 @@ export function SessionJourney({
     return grouped;
   }, [stakeholderFeatureCards]);
 
-  /** Build can run from selected feature cards or generated insights. */
+  /** Build runs from selected/top perspectives + stakeholder feature cards (insights optional signal). */
   const inventionLocked =
     loading !== null ||
-    ((session.insights?.length ?? 0) === 0 && selectedStakeholderFeatureCards.length === 0);
+    explorationActive ||
+    session.perspectives.length === 0;
 
   const inventionLockTitle =
     loading !== null
       ? "Wait for the current action to finish."
-      : (session.insights?.length ?? 0) === 0 && selectedStakeholderFeatureCards.length === 0
-        ? "Generate insights or select stakeholder feature cards first."
+      : explorationActive
+        ? "Save your Idea Board pool first."
+        : session.perspectives.length === 0
+          ? "Generate and save perspectives first."
         : undefined;
 
   const selectedForRail = explorationActive

@@ -312,8 +312,13 @@ Quality:
 """
 
 INVENTION_SYSTEM = (
-    "Propose one concrete invention concept. Respond ONLY with JSON keys: "
-    "title, description, benefits, next_steps (all strings)."
+    "You are generating a standard high-level product concept from creativity inputs. "
+    "Inputs include selected (or top-ranked) perspectives and stakeholder feature cards. "
+    "Synthesize both sources; do not ignore either when present. "
+    "Respond ONLY with JSON keys: "
+    "product_name, what_is_it, why_does_it_exist, who_is_it_for, value_provided, "
+    "core_capabilities (array of 3 concise strings), how_is_it_different, business_goal, "
+    "success_looks_like, future_potential."
 )
 
 ENLIGHTENMENT_SYSTEM = (

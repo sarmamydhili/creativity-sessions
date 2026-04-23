@@ -139,6 +139,16 @@ export interface InventionArtifact {
   description: string;
   benefits: string;
   next_steps: string;
+  product_name?: string;
+  what_is_it?: string;
+  why_does_it_exist?: string;
+  who_is_it_for?: string;
+  value_provided?: string;
+  core_capabilities?: string[];
+  how_is_it_different?: string;
+  business_goal?: string;
+  success_looks_like?: string;
+  future_potential?: string;
 }
 
 export interface EnlightenmentArtifact {
