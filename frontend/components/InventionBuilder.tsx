@@ -22,17 +22,63 @@ type ParsedConceptSections = {
   why_does_it_exist?: string;
   who_is_it_for?: string;
   value_provided?: string;
+  core_capabilities?: string[];
   how_is_it_different?: string;
   business_goal?: string;
   success_looks_like?: string;
   future_potential?: string;
 };
 
+function splitSentences(text: string): string[] {
+  return (text || "")
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function deriveCoreCapabilities(
+  explicit: string[] | undefined,
+  parsed: string[] | undefined,
+  what: string,
+  value: string,
+  differentiator: string,
+): string[] {
+  const cleaned = (explicit && explicit.length > 0 ? explicit : parsed || [])
+    .map((x) => x.trim())
+    .filter((x) => x && x !== "-" && x !== "•");
+  if (cleaned.length > 0) return cleaned.slice(0, 3);
+
+  const candidates = [
+    ...splitSentences(what),
+    ...splitSentences(value),
+    ...splitSentences(differentiator),
+  ]
+    .map((x) => x.replace(/^[-•]\s*/, "").trim())
+    .filter((x) => x.length > 12);
+
+  const uniq: string[] = [];
+  const seen = new Set<string>();
+  for (const line of candidates) {
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(line);
+    if (uniq.length >= 3) break;
+  }
+  if (uniq.length > 0) return uniq;
+
+  return [
+    "Clear end-to-end user workflow for the core scenario",
+    "Personalized experience layer tied to user context",
+    "Feedback loop to improve outcomes over time",
+  ];
+}
+
 function parseLabeledConceptText(text: string): ParsedConceptSections {
   const source = (text || "").trim();
   if (!source) return {};
   const markerRegex =
-    /(what is it\?|why does it exist\?|who is it for\?|what value does it provide\?|how is it different\?|business goal:?|success looks like:?|future potential:?)/gi;
+    /(what is it\?|why does it exist\?|who is it for\?|what value does it provide\?|core capabilities:?|how is it different\?|business goal:?|success looks like:?|future potential:?)/gi;
   const matches = [...source.matchAll(markerRegex)];
   if (matches.length < 2) return {};
   const out: ParsedConceptSections = {};
@@ -46,6 +92,14 @@ function parseLabeledConceptText(text: string): ParsedConceptSections {
     else if (marker === "why does it exist") out.why_does_it_exist = value;
     else if (marker === "who is it for") out.who_is_it_for = value;
     else if (marker === "what value does it provide") out.value_provided = value;
+    else if (marker === "core capabilities") {
+      const caps = value
+        .split(/\n+|;\s*|,\s*/)
+        .map((x) => x.trim().replace(/^[-•]\s*/, ""))
+        .filter((x) => Boolean(x) && x !== "-" && x !== "•")
+        .slice(0, 3);
+      if (caps.length) out.core_capabilities = caps;
+    }
     else if (marker === "how is it different") out.how_is_it_different = value;
     else if (marker === "business goal") out.business_goal = value;
     else if (marker === "success looks like") out.success_looks_like = value;
@@ -182,6 +236,13 @@ export function InventionBuilder({
                 Boolean(active.why_does_it_exist) ||
                 Boolean(active.who_is_it_for) ||
                 parsedCount >= 3;
+              const coreCapabilities = deriveCoreCapabilities(
+                active.core_capabilities,
+                parsed.core_capabilities,
+                active.what_is_it || parsed.what_is_it || active.description || "",
+                active.value_provided || parsed.value_provided || active.benefits || "",
+                active.how_is_it_different || parsed.how_is_it_different || "",
+              );
               return showTemplate ? (
                 <div className="grid gap-2 text-xs text-slate-700 md:grid-cols-2">
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -207,9 +268,7 @@ export function InventionBuilder({
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
                     <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500">6. Core Capabilities</p>
                     <ul className="ml-4 mt-1 list-disc space-y-0.5">
-                      {(active.core_capabilities && active.core_capabilities.length > 0
-                        ? active.core_capabilities
-                        : ["-"]).map((cap, idx) => (
+                      {coreCapabilities.map((cap, idx) => (
                         <li key={`${cap}-${idx}`}>{cap}</li>
                       ))}
                     </ul>

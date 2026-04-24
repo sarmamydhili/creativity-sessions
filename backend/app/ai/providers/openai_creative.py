@@ -49,6 +49,23 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return json.loads(m.group())
 
 
+def _normalize_core_capabilities(raw: Any) -> list[str]:
+    if isinstance(raw, list):
+        out = [str(x).strip() for x in raw if str(x).strip()]
+        return out[:3]
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        parts = [
+            p.strip(" -•\t")
+            for p in re.split(r"\n+|;\s*|,\s*", text)
+            if p.strip(" -•\t")
+        ]
+        return parts[:3]
+    return []
+
+
 def _normalize_pool_tool_slug(raw: str) -> str:
     t = (raw or "analogy").lower().strip().replace(" ", "_").replace("-", "_")
     if t in ("re_categorization", "recategorisation"):
@@ -590,10 +607,9 @@ class OpenAICreativeProvider(CreativeProvider):
         why_does_it_exist = str(raw.get("why_does_it_exist") or "").strip()
         who_is_it_for = str(raw.get("who_is_it_for") or "").strip()
         value_provided = str(raw.get("value_provided") or raw.get("benefits") or "").strip()
-        core_caps_raw = raw.get("core_capabilities")
-        core_capabilities: list[str] = []
-        if isinstance(core_caps_raw, list):
-            core_capabilities = [str(x).strip() for x in core_caps_raw if str(x).strip()][:3]
+        core_capabilities = _normalize_core_capabilities(raw.get("core_capabilities"))
+        if not core_capabilities:
+            core_capabilities = _normalize_core_capabilities(raw.get("coreCapabilities"))
         how_is_it_different = str(raw.get("how_is_it_different") or "").strip()
         business_goal = str(raw.get("business_goal") or "").strip()
         success_looks_like = str(raw.get("success_looks_like") or "").strip()

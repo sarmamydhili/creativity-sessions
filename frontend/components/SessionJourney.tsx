@@ -739,7 +739,7 @@ export function SessionJourney({
   const isQuick = experienceMode === "quick";
   const isStudio = experienceMode === "studio";
   const sparkCardsOpenByDefault = !isQuick;
-  const showQuickTray = isQuick;
+  const showQuickTray = false;
   const sessionGoalLabel = deliverableLabel(projectType);
 
   useEffect(() => {

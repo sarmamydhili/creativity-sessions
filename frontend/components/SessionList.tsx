@@ -63,7 +63,7 @@ export function SessionList({ items: initialItems }: { items: SessionSummary[] }
             </Link>
             <button
               type="button"
-              className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-lg border border-rose-700 bg-rose-600 px-2 py-1 text-xs font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
               disabled={busyId !== null}
               onClick={() => void remove(s.session_id)}
             >
