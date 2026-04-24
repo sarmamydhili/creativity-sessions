@@ -83,35 +83,52 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
   if (!p) return null;
   const text = p.text || p.description || "";
   const [localText, setLocalText] = useState(text);
+  const [expanded, setExpanded] = useState(false);
   useEffect(() => {
     setLocalText(text);
   }, [p.perspective_id, text]);
+  useEffect(() => {
+    setExpanded(false);
+  }, [p.perspective_id]);
   const rank = parseRankScore(p.rank_score);
   const approvedGhost = Boolean(p.approved_from_ghost);
   const normalizedTool = normalizeTool(p.source_tool);
+  const cardWidthClass = expanded ? "w-auto" : "w-[320px]";
+  const cardStyle = expanded ? { width: "min(1120px, 86vw)" } : undefined;
   const cardClass = approvedGhost
-    ? "w-[320px] rounded-xl border border-violet-400 bg-violet-50/70 p-3 shadow-md ring-1 ring-violet-200"
-    : "w-[320px] rounded-xl border border-slate-300 bg-white p-3 shadow-md";
+    ? `${cardWidthClass} rounded-xl border border-violet-400 bg-violet-50/70 p-3 shadow-md ring-1 ring-violet-200`
+    : `${cardWidthClass} rounded-xl border border-slate-300 bg-white p-3 shadow-md`;
   return (
-    <div className={cardClass}>
+    <div className={cardClass} style={cardStyle}>
       <div className="mb-1 flex items-start justify-between gap-2">
         <div
           className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${toolBadgeClass(normalizedTool)}`}
         >
           {normalizedTool}
         </div>
-        <button
-          type="button"
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-rose-700 bg-rose-600 text-lg font-extrabold leading-none text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
-          onClick={() => {
-            if (!window.confirm("Delete this perspective?")) return;
-            data.onDelete(p.perspective_id);
-          }}
-          title="Delete perspective"
-          aria-label="Delete perspective"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="nodrag nowheel flex h-10 w-10 items-center justify-center rounded-md border border-slate-300 bg-white text-lg font-bold text-slate-700 hover:bg-slate-100"
+            onClick={() => setExpanded((v) => !v)}
+            title={expanded ? "Shrink card" : "Expand card"}
+            aria-label={expanded ? "Shrink card" : "Expand card"}
+          >
+            <span aria-hidden>{expanded ? "⤡" : "⤢"}</span>
+          </button>
+          <button
+            type="button"
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-rose-700 bg-rose-600 text-lg font-extrabold leading-none text-white hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+            onClick={() => {
+              if (!window.confirm("Delete this perspective?")) return;
+              data.onDelete(p.perspective_id);
+            }}
+            title="Delete perspective"
+            aria-label="Delete perspective"
+          >
+            ×
+          </button>
+        </div>
       </div>
       {approvedGhost ? (
         <div className="mb-1 inline-flex rounded-full border border-violet-300 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-700">
@@ -126,7 +143,9 @@ export function PerspectiveNode({ data }: { data: PerspectiveNodeData }) {
         </div>
       ) : null}
       <textarea
-        className="nodrag nowheel min-h-[84px] w-full resize-none rounded-md border border-slate-200 bg-white p-2 text-sm text-slate-700 outline-none ring-indigo-200 focus:ring"
+        className={`nodrag nowheel w-full resize-none rounded-md border border-slate-200 bg-white p-2 text-sm text-slate-700 outline-none ring-indigo-200 focus:ring ${
+          expanded ? "min-h-[320px]" : "min-h-[84px]"
+        }`}
         value={localText}
         onChange={(e) => {
           setLocalText(e.target.value);
